@@ -1,5 +1,6 @@
 {
   "branches": ["main"],
+  "repositoryUrl": "git@github.com:SebastienDegodez/github-copilot-arazzo.git",
   "tagFormat": "v${version}",
   "plugins": [
     [

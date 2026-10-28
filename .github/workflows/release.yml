@@ -2,6 +2,8 @@ name: Release
 
 # Every push to main is analysed by semantic-release: feat → minor, fix/perf/refactor → patch,
 # BREAKING CHANGE → major; docs, test, ci and chore commits cut no release.
+# The release commit and tag are pushed over SSH with the `semantic-release` deploy key, the only
+# actor the ruleset of main lets push without a pull request; GITHUB_TOKEN creates the release.
 on:
   push:
     branches: [main]
@@ -24,7 +26,8 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-          persist-credentials: false
+          ssh-key: ${{ secrets.RELEASE_DEPLOY_KEY }}
+          persist-credentials: true
       - uses: actions/setup-node@v7
         with:
           node-version: '22'

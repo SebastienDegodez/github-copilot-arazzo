@@ -132,7 +132,10 @@ npm run mutation:core       # Stryker, breaks under 100
 npm run mutation:boundary   # Stryker, breaks under 80
 ```
 
-Every gate runs in [CI](.github/workflows/ci.yml) on each pull request.
+Every gate runs in [CI](.github/workflows/ci.yml) on each pull request. Mutation testing only
+mutates the source files a pull request changes, and is skipped when it changes none (tests or docs
+only); a change of the Stryker configs or package manifests mutates the whole scope, and a
+[weekly run](.github/workflows/mutation-full.yml) mutates everything.
 
 ## Demo video
 
@@ -160,6 +163,14 @@ Accessibility > Read & Speak > System voice ⓘ > English (US) > Ava. Pick anoth
 `--voice "Zoe"`, or leave it out with `--no-voice` (music and effects only) or `--no-audio`.
 The export seeks the page frame by frame (`window.__video.seek(t)`), screenshots it with Playwright
 and encodes with ffmpeg (`ffmpeg-static`), so the result does not depend on the machine's speed.
+
+## Repository rules
+
+`main` is protected by a ruleset: changes land through a squash-merged pull request whose
+CI checks pass (tests, coverage, browser tests, mutation, Conventional Commit title), with CodeQL
+code scanning. The coverage job enforces 100 % line coverage and at least 95 % branch and function
+coverage. Code owners review every change. Only the release job pushes to `main` directly, with a
+dedicated deploy key.
 
 ## Releases
 
