@@ -1,12 +1,23 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "arazzo",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Arazzo workflows in GitHub Copilot — a visual canvas to author an Arazzo document from your OpenAPI descriptions: drop operations as steps, wire data between them, see what is invalid and ask Copilot.",
-  "author": { "name": "SebastienDegodez" },
+  "author": {
+    "name": "SebastienDegodez"
+  },
   "homepage": "https://github.com/SebastienDegodez/github-copilot-arazzo",
   "repository": "https://github.com/SebastienDegodez/github-copilot-arazzo",
   "license": "Apache-2.0",
-  "keywords": ["arazzo", "openapi", "workflow", "canvas", "api", "microcks"],
-  "extensions": { "com.github.copilot": {} }
+  "keywords": [
+    "arazzo",
+    "openapi",
+    "workflow",
+    "canvas",
+    "api",
+    "microcks"
+  ],
+  "extensions": {
+    "com.github.copilot": {}
+  }
 }

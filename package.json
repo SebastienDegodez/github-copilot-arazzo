@@ -1,6 +1,6 @@
 {
   "name": "github-copilot-arazzo",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "description": "A visual Arazzo workflow canvas for GitHub Copilot. Development tooling only: the plugin itself has no runtime dependency.",
