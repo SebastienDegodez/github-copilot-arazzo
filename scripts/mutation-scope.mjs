@@ -1,8 +1,7 @@
 // Which files a mutation run mutates: only the files of a Stryker scope that a change touches.
 //
 // - no base (first push, manual or scheduled run) or a base Git cannot find → the whole scope;
-// - a change to what decides how tests and mutants run (Stryker configs, package manifests,
-//   this script) → the whole scope;
+// - a change to a Stryker config or package manifest → the whole scope;
 // - otherwise the scope files changed since the base (merge base of a pull request, previous
 //   commit of a push) — tests, docs or other scopes alone mutate nothing.
 //
@@ -16,7 +15,6 @@ import { join } from 'node:path'
 const WHOLE_SCOPE_TRIGGERS = [
   /^stryker\.[a-z]+\.config\.json$/,
   /^package(-lock)?\.json$/,
-  /^scripts\/mutation-scope\.mjs$/,
 ]
 const NO_BASE = /^0*$/
 

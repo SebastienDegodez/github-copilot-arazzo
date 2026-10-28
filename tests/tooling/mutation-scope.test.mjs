@@ -64,7 +64,16 @@ describe('mutation scope', () => {
     assert.deepEqual(repo.scope(main).files, ['src/domain/b.mjs'])
   })
 
-  for (const file of [CONFIG, 'stryker.boundary.config.json', 'package.json', 'package-lock.json', 'scripts/mutation-scope.mjs']) {
+  test('changes to the scope selector alone do not mutate product code', async () => {
+    const repo = await repository()
+    await repo.write('scripts/mutation-scope.mjs', '// selector changed\n')
+    repo.commit('mutation selector')
+    assert.deepEqual(repo.scope(repo.base), {
+      mode: 'none', files: [], reason: 'no source file of this scope changed',
+    })
+  })
+
+  for (const file of [CONFIG, 'stryker.boundary.config.json', 'package.json', 'package-lock.json']) {
     test(`a change of ${file} mutates the whole scope`, async () => {
       const repo = await repository()
       await repo.write(file, '{"mutate":["src/domain/*.mjs","src/application/*.mjs"]}\n')
