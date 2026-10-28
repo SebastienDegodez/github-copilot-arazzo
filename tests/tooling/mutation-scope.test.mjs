@@ -73,7 +73,16 @@ describe('mutation scope', () => {
     })
   })
 
-  for (const file of [CONFIG, 'stryker.boundary.config.json', 'package.json', 'package-lock.json']) {
+  test('script-only package manifest changes do not mutate product code', async () => {
+    const repo = await repository()
+    await repo.write('package.json', '{"scripts":{"test:tooling":"node --test"}}\n')
+    repo.commit('tooling test command')
+    assert.deepEqual(repo.scope(repo.base), {
+      mode: 'none', files: [], reason: 'no source file of this scope changed',
+    })
+  })
+
+  for (const file of [CONFIG, 'stryker.boundary.config.json', 'package-lock.json']) {
     test(`a change of ${file} mutates the whole scope`, async () => {
       const repo = await repository()
       await repo.write(file, '{"mutate":["src/domain/*.mjs","src/application/*.mjs"]}\n')
