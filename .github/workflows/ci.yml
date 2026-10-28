@@ -120,15 +120,26 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: npm
-      - run: npm ci
+      # Mutates only the files of the scope the change touches: a pull request against its merge
+      # base, a push against the previous commit. No source change of the scope, no mutation.
+      - name: Files to mutate
+        id: scope
+        run: node scripts/mutation-scope.mjs stryker.${{ matrix.scope }}.config.json "${{ github.event.pull_request.base.sha || github.event.before }}"
+      - if: steps.scope.outputs.run == 'true'
+        run: npm ci
       - name: Stryker (core breaks under 100, boundary under 80)
-        run: npm run mutation:${{ matrix.scope }}
+        if: steps.scope.outputs.run == 'true'
+        env:
+          MUTATE: ${{ steps.scope.outputs.mutate }}
+        run: npx stryker run stryker.${{ matrix.scope }}.config.json --mutate "$MUTATE"
       - uses: actions/upload-artifact@v7
-        if: always()
+        if: always() && steps.scope.outputs.run == 'true'
         with:
           name: mutation-${{ matrix.scope }}
           path: reports/mutation/

@@ -1,0 +1,36 @@
+name: Mutation (full)
+
+# Pull requests and pushes mutate only the files they change (see ci.yml). Once a week, and on
+# demand, every file of both scopes is mutated, so a mutant a deleted test lets live elsewhere is
+# still found.
+on:
+  schedule:
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mutation:
+    name: Mutation full (${{ matrix.scope }})
+    strategy:
+      fail-fast: false
+      matrix:
+        scope: [core, boundary]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Stryker (core breaks under 100, boundary under 80)
+        run: npm run mutation:${{ matrix.scope }}
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: mutation-full-${{ matrix.scope }}
+          path: reports/mutation/
