@@ -1,17 +1,15 @@
 // features/author-workflow.feature, through the studio use cases.
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
-import { createStudio } from '../../src/arazzo-application/studio.mjs'
-import { InMemoryDocuments, InMemorySources, PATH, RecordingAssistant, savedWorkflow, stepIdsOf, studioWith } from '../support/studio-world.mjs'
+import { adoptDocument, describedStep, errorsOf, PATH, savedWorkflow, stepIdsOf, studioOn, studioWith } from '../support/studio-world.mjs'
 
 describe('Author an Arazzo workflow on a visual canvas', () => {
   test('Start a new workflow document', async () => {
-    const documents = new InMemoryDocuments()
-    const studio = createStudio({ documents, sources: new InMemorySources(), assistant: new RecordingAssistant() })
+    const { studio, documents } = studioOn()
 
     const view = await studio.open({ path: PATH, sources: [{ name: 'petstore', url: 'petstore.yaml' }] })
 
-    assert.deepEqual(documents.files.get(PATH), {
+    assert.deepEqual(documents.saved(), {
       arazzo: '1.0.1',
       info: { title: 'adopt', version: '1.0.0' },
       sourceDescriptions: [{ name: 'petstore', url: 'petstore.yaml', type: 'openapi' }],
@@ -29,13 +27,24 @@ describe('Author an Arazzo workflow on a visual canvas', () => {
   })
 
   test('Start a new workflow document named after the workflow asked', async () => {
-    const documents = new InMemoryDocuments()
-    const studio = createStudio({ documents, sources: new InMemorySources(), assistant: new RecordingAssistant() })
+    const { studio, documents } = studioOn()
 
     await studio.open({ path: 'flows/2026/orders.yaml', workflowId: 'place-order' })
 
-    assert.deepEqual(documents.files.get('flows/2026/orders.yaml').info.title, 'orders')
-    assert.deepEqual(documents.files.get('flows/2026/orders.yaml').workflows, [{ workflowId: 'place-order', steps: [] }])
+    assert.deepEqual(documents.saved('flows/2026/orders.yaml').info.title, 'orders')
+    assert.deepEqual(documents.saved('flows/2026/orders.yaml').workflows, [{ workflowId: 'place-order', steps: [] }])
+  })
+
+  test('Open an existing document on the workflow asked', async () => {
+    const { studio, documents } = studioOn()
+    documents.put(PATH, adoptDocument({ edit: (workflow) => ({ ...workflow, steps: [describedStep('findPets')] }) }))
+    const document = documents.saved()
+    document.workflows.push({ workflowId: 'order', summary: 'Order', description: 'Order a pet', steps: [describedStep('placeOrder')] })
+    documents.put(PATH, document)
+
+    await studio.open({ path: PATH, workflowId: 'order' })
+
+    assert.deepEqual([studio.view().workflowId, stepIdsOf(studio)], ['order', ['placeOrder']])
   })
 
   test('Open an existing document without rewriting it', async () => {
@@ -82,7 +91,7 @@ describe('Author an Arazzo workflow on a visual canvas', () => {
 
   test('Steps calling an operation of one of several APIs name it with its API', async () => {
     const { studio, sources } = await studioWith()
-    sources.apis.set('store.yaml', { paths: { '/stock': { get: { operationId: 'getStock' } } } })
+    sources.apis.set('store.yaml', { openapi: '3.1.0', paths: { '/stock': { get: { operationId: 'getStock' } } } })
 
     await studio.addSource({ name: 'store', url: 'store.yaml' })
     await studio.addStep({ operation: 'store.getStock' })
@@ -263,7 +272,7 @@ describe('Author an Arazzo workflow on a visual canvas', () => {
   test('Retry without waiting', async () => {
     const { studio, documents } = await studioWith({ steps: ['placeOrder'] })
     await studio.addAction({ stepId: 'placeOrder', on: 'failure', type: 'retry', retryLimit: 1 })
-    assert.deepEqual(savedWorkflow(documents).steps[0].onFailure, [{ name: 'retry', type: 'retry', retryLimit: 1 }])
+    assert.deepEqual(savedWorkflow(documents).steps[0].onFailure, [{ name: 'retry', type: 'retry', retryLimit: 1, retryAfter: 0 }])
     assert.deepEqual(studio.view().diagram.edges.find((edge) => edge.kind === 'retry').label.lines, ['retry ×1'])
   })
 
@@ -273,7 +282,7 @@ describe('Author an Arazzo workflow on a visual canvas', () => {
     await studio.removeStep({ stepId: 'findPets' })
 
     assert.deepEqual(stepIdsOf(studio), ['getPet'])
-    assert.deepEqual(savedWorkflow(documents).steps, [{ stepId: 'getPet', operationId: 'getPet' }])
+    assert.deepEqual(savedWorkflow(documents).steps, [describedStep('getPet')])
     await assert.rejects(studio.removeStep({ stepId: 'findPets' }), { message: 'the workflow "adopt-pet" has no step "findPets"' })
   })
 
@@ -286,11 +295,11 @@ describe('Author an Arazzo workflow on a visual canvas', () => {
     await studio.addWorkflow({ workflowId: 'browse' })
 
     assert.deepEqual(studio.view().workflows, [
-      { workflowId: 'adopt-pet', summary: '', steps: 1 },
+      { workflowId: 'adopt-pet', summary: 'Adopt a pet', steps: 1 },
       { workflowId: 'order-pet', summary: 'Order a pet', steps: 1 },
       { workflowId: 'browse', summary: '', steps: 0 },
     ])
-    assert.deepEqual(documents.files.get(PATH).workflows[2], { workflowId: 'browse', steps: [] })
+    assert.deepEqual(documents.saved().workflows[2], { workflowId: 'browse', steps: [] })
     await studio.selectWorkflow({ workflowId: 'adopt-pet' })
     assert.deepEqual(stepIdsOf(studio), ['findPets'])
     await studio.addStep({ operationId: 'getPet', workflowId: 'order-pet' })
@@ -301,28 +310,29 @@ describe('Author an Arazzo workflow on a visual canvas', () => {
   })
 
   test('Describe another API', async () => {
-    const { studio, documents } = await studioWith()
+    const { studio, documents, sources } = await studioWith()
+    sources.apis.set('other.arazzo.yaml', { arazzo: '1.0.1' })
     await assert.rejects(studio.addSource({ name: 'petstore', url: 'x.yaml' }), { message: 'the document already describes an API named "petstore"' })
     await assert.rejects(studio.addSource({ name: 'store' }), { message: 'the API description "store" needs a url' })
     await assert.rejects(studio.addSource({ name: 'my store', url: 'x' }), { message: 'the API description name "my store" must only use letters, digits, "_" and "-"' })
     await studio.addSource({ name: 'flows', url: 'other.arazzo.yaml', type: 'arazzo' })
-    assert.deepEqual(documents.files.get(PATH).sourceDescriptions.at(-1), { name: 'flows', url: 'other.arazzo.yaml', type: 'arazzo' })
+    assert.deepEqual(documents.saved().sourceDescriptions.at(-1), { name: 'flows', url: 'other.arazzo.yaml', type: 'arazzo' })
     assert.equal(studio.view().operations.length, 3)
-    assert.deepEqual(studio.view().problems.map((problem) => problem.message), ['the workflow has no step yet: drop an operation on it'])
+    assert.deepEqual(errorsOf(studio), ['the workflow has no step yet: drop an operation on it'])
   })
 
   test('Follow the document when another tool changes its file', async () => {
     const { studio, documents } = await studioWith({ steps: ['findPets'] })
     let changes = 0
     const stop = studio.onChange(() => changes++)
-    documents.files.get(PATH).workflows[0].steps.push({ stepId: 'getPet', operationId: 'getPet' })
+    documents.put(PATH, adoptDocument({ steps: ['findPets', 'getPet'] }))
 
     await studio.reload()
     assert.deepEqual(stepIdsOf(studio), ['findPets', 'getPet'])
     assert.equal(changes, 1)
 
     stop()
-    documents.files.get(PATH).workflows[0].steps.pop()
+    documents.put(PATH, adoptDocument({ steps: ['findPets'] }))
     await studio.reload()
     assert.deepEqual(stepIdsOf(studio), ['findPets'])
     assert.equal(changes, 1)
@@ -332,8 +342,15 @@ describe('Author an Arazzo workflow on a visual canvas', () => {
     assert.deepEqual(stepIdsOf(studio), ['findPets'])
   })
 
+  test('Refuse to open a file that holds no Arazzo document', async () => {
+    const { studio, documents } = studioOn()
+    documents.files.set(PATH, '- a list\n')
+    await assert.rejects(studio.open({ path: PATH }), { name: 'RefusedEdit', message: `${PATH} is not an Arazzo document: the YAML does not hold an object (line 1)` })
+    assert.throws(() => studio.view(), { message: 'no Arazzo document is open on the canvas' })
+  })
+
   test('Nothing to edit before a document is open', async () => {
-    const studio = createStudio({ documents: new InMemoryDocuments(), sources: new InMemorySources(), assistant: new RecordingAssistant() })
+    const { studio } = studioOn()
     assert.throws(() => studio.view(), { name: 'RefusedEdit', message: 'no Arazzo document is open on the canvas' })
     await assert.rejects(studio.addStep({ operationId: 'x' }), { message: 'no Arazzo document is open on the canvas' })
     await assert.rejects(studio.open({}), { message: 'the canvas needs the path of the Arazzo document to open' })
@@ -349,21 +366,20 @@ describe('Author an Arazzo workflow on a visual canvas', () => {
   })
 
   test('Edit a document written by hand that leaves out its optional lists', async () => {
-    const documents = new InMemoryDocuments()
-    documents.files.set(PATH, { arazzo: '1.0.1', info: { title: 't', version: '1' }, workflows: [{ workflowId: 'bare' }] })
-    const studio = createStudio({ documents, sources: new InMemorySources(), assistant: new RecordingAssistant() })
+    const { studio, documents } = studioOn()
+    documents.put(PATH, { arazzo: '1.0.1', info: { title: 't', version: '1' }, workflows: [{ workflowId: 'bare' }] })
     await studio.open({ path: PATH })
 
     await studio.addSource({ name: 'petstore', url: 'petstore.yaml' })
     await studio.addStep({ operation: 'petstore.getPet' })
 
-    assert.deepEqual(documents.files.get(PATH).sourceDescriptions, [{ name: 'petstore', url: 'petstore.yaml', type: 'openapi' }])
-    assert.deepEqual(documents.files.get(PATH).workflows, [{ workflowId: 'bare', steps: [{ stepId: 'getPet', operationId: 'getPet' }] }])
+    assert.deepEqual(documents.saved().sourceDescriptions, [{ name: 'petstore', url: 'petstore.yaml', type: 'openapi' }])
+    assert.deepEqual(documents.saved().workflows, [{ workflowId: 'bare', steps: [{ stepId: 'getPet', operationId: 'getPet' }] }])
   })
 
   test('The palette keeps the operations read when the document was opened, until it is read again', async () => {
     const { studio, sources } = await studioWith({ steps: ['findPets'] })
-    sources.apis.set('petstore.yaml', { paths: { '/v2/pets': { get: { operationId: 'listPets' } } } })
+    sources.apis.set('petstore.yaml', { openapi: '3.1.0', paths: { '/v2/pets': { get: { operationId: 'listPets' } } } })
 
     await studio.addInput({ name: 'status' })
     await studio.addWorkflow({ workflowId: 'other' })
@@ -377,7 +393,7 @@ describe('Author an Arazzo workflow on a visual canvas', () => {
   test('The palette lists the operations of every method, with their parameters', async () => {
     const { studio, sources } = await studioWith()
     const methods = ['get', 'put', 'post', 'delete', 'options', 'head', 'patch', 'trace']
-    sources.apis.set('all.yaml', { paths: {
+    sources.apis.set('all.yaml', { openapi: '3.1.0', paths: {
       '/things/{id}': {
         parameters: [{ name: 'id', in: 'path', required: true }, { name: 'trace', in: 'header' }, { $ref: '#/components/parameters/x' }],
         ...Object.fromEntries(methods.map((method) => [method, { operationId: `${method}Thing` }])),

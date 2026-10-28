@@ -111,11 +111,14 @@ test('@visual retry a step on failure and see the loop on its right', async ({ p
 
 test('see a problem on its step and in the list, then remove the step', async ({ page }) => {
   await workspace.studio.addStep({ operationId: 'deletePet' })
-  await expect(page.getByTestId('status')).toHaveText('1 problem')
-  await expect(page.getByTestId('problems')).toHaveText('deletePet: "deletePet" is not an operation of "petstore"')
-  await expect(page.getByTestId('step-deletePet')).toHaveClass(/has-problems/)
+  await expect(page.getByTestId('status')).toHaveText('1 error · 1 warning')
+  const problem = page.getByTestId('problem').filter({ hasText: 'is not an operation' })
+  await expect(problem).toContainText('deletePet: "deletePet" is not an operation of "petstore"')
+  await expect(problem).toContainText('arazzo-step-validation')
+  await expect(page.getByTestId('step-deletePet')).toHaveClass(/has-errors/)
+  await expect(page.getByTestId('step-deletePet').getByTestId('badge-error')).toHaveText('✕ 1')
 
-  await page.getByTestId('problems').getByText('deletePet:').click()
+  await problem.click()
   await page.getByTestId('remove-step').click()
 
   await expect(page.getByTestId('step-deletePet')).toHaveCount(0)

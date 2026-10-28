@@ -1,6 +1,13 @@
 // Copilot CLI extension entry, the only file that imports the SDK.
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import { CanvasError, createCanvas, joinSession } from '@github/copilot-sdk/extension'
 import { register } from '../../../src/composition.mjs'
 
 // stdout carries JSON-RPC: the log goes to stderr, the extension's log file
-await register({ joinSession, createCanvas, CanvasError, root: process.cwd(), log: (text) => void process.stderr.write(`${text}\n`) })
+await register({
+  joinSession, createCanvas, CanvasError,
+  root: process.cwd(),
+  home: process.env.COPILOT_HOME || join(homedir(), '.copilot'),
+  log: (text) => void process.stderr.write(`${text}\n`),
+})

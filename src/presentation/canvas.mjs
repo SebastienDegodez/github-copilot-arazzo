@@ -6,7 +6,7 @@ import { startServer } from './server.mjs'
 
 export const CANVAS_ID = 'arazzo'
 export const DEFAULT_PATH = 'arazzo/workflow.arazzo.yaml'
-const REFUSALS = new Set(['RefusedEdit', 'UnreadableDocument'])
+const REFUSALS = new Set(['RefusedEdit'])
 const CRASHED = 'the Arazzo canvas hit an error; run the action again or reopen the canvas'
 
 export const isRefusal = (error) => REFUSALS.has(error.name)
@@ -45,7 +45,7 @@ export const arazzoCanvas = ({ createCanvas, CanvasError, studio, documents, fin
     if (wanted !== opened) {
       await studio.open({ path: wanted, workflowId, sources })
       unwatch()
-      unwatch = documents.watch(wanted, () => studio.reload().catch((error) => log(`arazzo canvas: ${error.message}`)))
+      unwatch = documents.watch(wanted, () => studio.reload().catch((error) => log(`arazzo canvas: ${error.stack ?? error.message}`)))
       opened = wanted
     } else if (workflowId) {
       await studio.selectWorkflow({ workflowId })
@@ -55,7 +55,7 @@ export const arazzoCanvas = ({ createCanvas, CanvasError, studio, documents, fin
   return createCanvas({
     id: CANVAS_ID,
     displayName: 'Arazzo',
-    description: 'Author an Arazzo workflow visually: drop the operations of your OpenAPI descriptions as steps, wire data between them, see its problems and ask Copilot.',
+    description: 'Author an Arazzo workflow visually: drop the operations of your OpenAPI descriptions as steps, wire data between them, see its problems against the spectral:arazzo rules and its YAML, save it and ask Copilot.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -86,8 +86,7 @@ export const arazzoCanvas = ({ createCanvas, CanvasError, studio, documents, fin
         await openDocument(ctx.input ?? {})
         const { url } = await ensureServer()
         instances.add(ctx.instanceId)
-        const { problems } = studio.view()
-        return { url, title: `Arazzo · ${opened}`, status: problems.length ? `${problems.length} problem${problems.length > 1 ? 's' : ''}` : 'valid' }
+        return { url, title: `Arazzo · ${opened}`, status: studio.view().status }
       } catch (error) {
         throw toCanvasError(error)
       }

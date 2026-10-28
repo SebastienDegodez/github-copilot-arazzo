@@ -1,7 +1,8 @@
 // Edits of an Arazzo document. Each takes a document and returns a new one, or refuses with a
 // RefusedEdit telling why; the document given is never changed.
+import { stepsCalling } from './catalog.mjs'
 import { inputExpression, stepOutputExpression } from './expressions.mjs'
-import { listOf } from './lists.mjs'
+import { listOf, mapOf, objectsOf } from './lists.mjs'
 import { RefusedEdit } from './refused-edit.mjs'
 
 export const ARAZZO_VERSION = '1.0.1'
@@ -22,7 +23,7 @@ const named = (kind, name) => {
   return name
 }
 
-export const workflowsOf = (document) => listOf(document.workflows)
+export const workflowsOf = (document) => objectsOf(document.workflows)
 
 export const findWorkflow = (document, workflowId) => {
   const workflow = workflowsOf(document).find((each) => each.workflowId === workflowId)
@@ -30,7 +31,7 @@ export const findWorkflow = (document, workflowId) => {
   return workflow
 }
 
-const stepsOf = (workflow) => listOf(workflow.steps)
+const stepsOf = (workflow) => objectsOf(workflow.steps)
 
 const indexOfStep = (workflow, stepId) => {
   const index = stepsOf(workflow).findIndex((step) => step.stepId === stepId)
@@ -51,11 +52,27 @@ const changeStep = (document, workflowId, stepId, change) =>
 export const addSource = (document, { name, url, type = 'openapi' }) => {
   named('the API description name', name)
   if (!url) throw new RefusedEdit(`the API description "${name}" needs a url`)
-  if (listOf(document.sourceDescriptions).some((source) => source.name === name)) {
+  if (objectsOf(document.sourceDescriptions).some((source) => source.name === name)) {
     throw new RefusedEdit(`the document already describes an API named "${name}"`)
   }
   const copy = structuredClone(document)
   copy.sourceDescriptions = [...listOf(copy.sourceDescriptions), { name, url, type }]
+  return copy
+}
+
+const quoted = (names) => names.map((name) => `"${name}"`)
+const sentence = (words) => (words.length > 1 ? `${words.slice(0, -1).join(', ')} and ${words.at(-1)}` : words[0])
+
+/** Removes an API description no step calls. */
+export const removeSource = (document, { name }, operations) => {
+  const index = objectsOf(document.sourceDescriptions).findIndex((source) => source.name === name)
+  if (index < 0) throw new RefusedEdit(`the document describes no API named "${name}"`)
+  const callers = stepsCalling(document, name, operations)
+  if (callers.length) {
+    throw new RefusedEdit(`the API "${name}" cannot be removed: the step${callers.length > 1 ? 's' : ''} ${sentence(quoted(callers))} call${callers.length > 1 ? '' : 's'} it`)
+  }
+  const copy = structuredClone(document)
+  copy.sourceDescriptions.splice(index, 1)
   return copy
 }
 
@@ -65,7 +82,7 @@ export const addWorkflow = (document, { workflowId, summary }) => {
     throw new RefusedEdit(`the document already has a workflow "${workflowId}"`)
   }
   const copy = structuredClone(document)
-  copy.workflows = [...workflowsOf(copy), { workflowId, ...(summary ? { summary } : {}), steps: [] }]
+  copy.workflows = [...listOf(copy.workflows), { workflowId, ...(summary ? { summary } : {}), steps: [] }]
   return copy
 }
 
@@ -84,7 +101,7 @@ export const addStep = (document, workflowId, { operationId, stepId, before }) =
   const copy = changeWorkflow(document, workflowId, (workflow) => {
     const at = before === undefined ? stepsOf(workflow).length : indexOfStep(workflow, before)
     added = freeStepId(workflow, wanted)
-    workflow.steps = stepsOf(workflow).toSpliced(at, 0, { stepId: added, operationId })
+    workflow.steps = listOf(workflow.steps).toSpliced(at, 0, { stepId: added, operationId })
   })
   return { document: copy, stepId: added }
 }
@@ -104,7 +121,7 @@ export const removeStep = (document, workflowId, { stepId }) =>
     workflow.steps.splice(indexOfStep(workflow, stepId), 1)
   })
 
-export const declaredInputs = (workflow) => Object.keys(workflow.inputs?.properties ?? {})
+export const declaredInputs = (workflow) => Object.keys(mapOf(mapOf(workflow.inputs).properties))
 
 export const addInput = (document, workflowId, { name, type = 'string' }) =>
   changeWorkflow(document, workflowId, (workflow) => {
@@ -141,21 +158,47 @@ const valueFrom = (workflow, from, targetIndex) => {
   return stepOutputExpression(from.stepId, from.output)
 }
 
+const placeOf = (place) => {
+  if (!PARAMETER_PLACES.includes(place)) throw new RefusedEdit(`a value goes in one of ${PARAMETER_PLACES.join(', ')}, not "${place}"`)
+  return place
+}
+
+/** Sends a value as a parameter of a step, or as a property of its JSON request body. */
+const send = (step, { name, in: place }, value) => {
+  if (place === 'body') {
+    step.requestBody = { contentType: 'application/json', ...step.requestBody, payload: { ...step.requestBody?.payload, [name]: value } }
+    return
+  }
+  const others = listOf(step.parameters).filter((each) => each.name !== name || each.in !== place)
+  step.parameters = [...others, { name, in: place, value }]
+}
+
 export const linkData = (document, workflowId, { from, to }) =>
   changeWorkflow(document, workflowId, (workflow) => {
     const index = indexOfStep(workflow, to.stepId)
     const value = valueFrom(workflow, from, index)
-    if (!PARAMETER_PLACES.includes(to.in)) {
-      throw new RefusedEdit(`a value goes in one of ${PARAMETER_PLACES.join(', ')}, not "${to.in}"`)
+    send(workflow.steps[index], { name: to.name, in: placeOf(to.in) }, value)
+  })
+
+/** Gives a step a value to send: a fixed value, or a runtime expression the problems then check. */
+export const setStepValue = (document, workflowId, { stepId, name, in: place, value }) =>
+  changeStep(document, workflowId, stepId, (step) => {
+    if (!name) throw new RefusedEdit('a parameter needs a name')
+    if (value === undefined) throw new RefusedEdit(`the ${place} parameter "${name}" needs a value`)
+    send(step, { name, in: placeOf(place) }, value)
+  })
+
+/** Stops sending a parameter, or a property of the request body. */
+export const clearStepValue = (document, workflowId, { stepId, name, in: place }) =>
+  changeStep(document, workflowId, stepId, (step) => {
+    const payload = mapOf(step.requestBody?.payload)
+    const parameters = listOf(step.parameters).filter((each) => each.name !== name || each.in !== place)
+    if (place === 'body' ? !Object.hasOwn(payload, name) : parameters.length === listOf(step.parameters).length) {
+      throw new RefusedEdit(`"${stepId}" sends no ${place} parameter "${name}"`)
     }
-    const step = workflow.steps[index]
-    if (to.in === 'body') {
-      const payload = step.requestBody?.payload ?? {}
-      step.requestBody = { contentType: 'application/json', ...step.requestBody, payload: { ...payload, [to.name]: value } }
-      return
-    }
-    const others = listOf(step.parameters).filter((each) => each.name !== to.name || each.in !== to.in)
-    step.parameters = [...others, { name: to.name, in: to.in, value }]
+    if (place === 'body') delete step.requestBody.payload[name]
+    else if (parameters.length) step.parameters = parameters
+    else delete step.parameters
   })
 
 export const addWorkflowOutput = (document, workflowId, { name, stepId, output }) =>
@@ -178,7 +221,7 @@ const actionOf = (workflow, { on, type, target, retryAfter, retryLimit }) => {
   }
   if (type === 'retry' && on === 'failure') {
     if (!Number.isInteger(retryLimit) || retryLimit < 1) throw new RefusedEdit('a retry needs at least 1 attempt')
-    return { name: 'retry', type, retryLimit, ...(retryAfter ? { retryAfter } : {}) }
+    return { name: 'retry', type, retryLimit, retryAfter: retryAfter ?? 0 }
   }
   throw new RefusedEdit(type === 'retry' ? 'a step only retries on failure' : `an action is end, goto or retry, not "${type}"`)
 }

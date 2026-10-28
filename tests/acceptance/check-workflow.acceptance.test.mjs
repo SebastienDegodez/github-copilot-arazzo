@@ -1,179 +1,167 @@
 // features/check-workflow.feature and features/ask-copilot.feature, through the studio use cases.
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
-import { createStudio } from '../../src/arazzo-application/studio.mjs'
-import { InMemoryDocuments, InMemorySources, messagesOf, PATH, RecordingAssistant, studioWith } from '../support/studio-world.mjs'
+import { adoptDocument, describedStep, PATH, studioOn, studioWith } from '../support/studio-world.mjs'
 
-const problemsOfStep = (studio, stepId) => studio.view().problems.filter((problem) => problem.stepId === stepId)
+const stepOf = (document, index) => document.workflows[0].steps[index]
+
+/** The adopt-pet document with findPets, getPet and placeOrder and the input "status", changed by `edit`. */
+const openedWith = async (edit, world = studioOn()) => {
+  const document = adoptDocument({ steps: ['findPets', 'getPet', 'placeOrder'], inputs: ['status'] })
+  edit(document)
+  world.documents.put(PATH, document)
+  await world.studio.open({ path: PATH })
+  return world
+}
+
+const found = (studio) => studio.view().problems.map(({ rule, severity, pointer, message }) => [rule, severity, pointer, message])
 
 describe('See what is wrong with a workflow while authoring it', () => {
-  test('A valid workflow has no problem', async () => {
-    const { studio } = await studioWith({ steps: ['findPets'] })
+  test('A valid document has no problem', async () => {
+    const { studio } = await openedWith(() => {})
     assert.deepEqual(studio.view().problems, [])
+    assert.equal(studio.view().status, 'valid')
   })
 
-  test('A step calls an operation no API describes', async () => {
-    const { studio } = await studioWith({ steps: ['deletePet', 'findPets'] })
-    assert.deepEqual(problemsOfStep(studio, 'deletePet'), [{ workflowId: 'adopt-pet', stepId: 'deletePet', message: '"deletePet" is not an operation of "petstore"' }])
-    assert.deepEqual(studio.view().diagram.nodes[1].problems, ['"deletePet" is not an operation of "petstore"'])
-    assert.equal(studio.view().diagram.nodes[1].operation, null)
-    assert.deepEqual(studio.view().workflow.steps[0].slots, [])
-    assert.deepEqual(studio.view().diagram.nodes[2].problems, [])
+  test('Each problem tells its rule, its severity, where it is and why', async () => {
+    const { studio } = await studioWith({ steps: ['findPets', { ...describedStep('getPet'), parameters: [{ name: 'petId', in: 'path', value: '$inputs.status' }] }, 'placeOrder'] })
+
+    const error = {
+      rule: 'arazzo-step-parameters-validation', severity: 'error', pointer: '#/workflows/0/steps/1/parameters/0/value', line: 25,
+      workflowId: 'adopt-pet', stepId: 'getPet', message: 'the input "status" is not declared',
+    }
+    assert.deepEqual(studio.view().problems, [error])
+    assert.deepEqual(studio.view().diagram.nodes.map((node) => node.problems), [undefined, [], [{ severity: 'error', message: error.message }], [], undefined])
   })
 
-  test('A step is checked against every API the document describes', async () => {
-    const { studio, sources } = await studioWith({ steps: ['deletePet'] })
-    sources.apis.set('store.yaml', { paths: {} })
-    await studio.addSource({ name: 'store', url: 'store.yaml' })
-    assert.deepEqual(problemsOfStep(studio, 'deletePet').map((problem) => problem.message), ['"deletePet" is not an operation of "petstore", "store"'])
-  })
+  test('The problems of another workflow are not mixed with those of the workflow shown', async () => {
+    const { studio } = await openedWith((document) => document.workflows.push({ workflowId: 'test', summary: 'Test', description: 'A test', steps: [] }))
 
-  test('A step shows the problems of its own workflow only', async () => {
-    const { studio } = await studioWith({ steps: ['getPet'] })
-    await studio.addWorkflow({ workflowId: 'other' })
-    await studio.addStep({ operationId: 'deletePet', stepId: 'getPet' })
-    await studio.selectWorkflow({ workflowId: 'adopt-pet' })
-    assert.deepEqual(studio.view().diagram.nodes[1].problems, [])
-  })
-
-  test('A step names an operation of another API than the one offering it', async () => {
-    const { studio } = await studioWith({ steps: [{ stepId: 'a', operationId: '$sourceDescriptions.store.getPet' }, { stepId: 'b', operationId: '$sourceDescriptions.petstore.getPet' }, { stepId: 'c', operationId: 'x$sourceDescriptions.petstore.getPet' }] })
-    assert.deepEqual(studio.view().problems.map((problem) => [problem.stepId, problem.message]), [
-      ['a', '"$sourceDescriptions.store.getPet" is not an operation of "petstore"'],
-      ['c', '"x$sourceDescriptions.petstore.getPet" is not an operation of "petstore"'],
-    ])
-  })
-
-  test('A step is only checked against the APIs the canvas could read', async () => {
-    const { studio, sources } = await studioWith({ steps: ['deletePet'] })
-    sources.apis.clear()
-    await studio.reload()
-    assert.deepEqual(messagesOf(studio), ['the API description "petstore" cannot be read from petstore.yaml: no such file'])
-    assert.deepEqual(studio.view().operations, [])
-  })
-
-  test('A step calls no operation or more than one', async () => {
-    const { studio } = await studioWith({ steps: [{ stepId: 'none' }, { stepId: 'two', operationId: 'getPet', workflowId: 'other' }, { stepId: 'path', operationPath: '{$sourceDescriptions.petstore.url}#/paths/~1pets/get' }, { stepId: 'flow', workflowId: 'other' }] })
-    assert.deepEqual(studio.view().problems.map((problem) => [problem.stepId, problem.message]), [
-      ['none', 'must call exactly one of operationId, operationPath or workflowId'],
-      ['two', 'must call exactly one of operationId, operationPath or workflowId'],
-    ])
-    assert.deepEqual(studio.view().workflow.steps.map((step) => step.operationId), [null, 'getPet', '{$sourceDescriptions.petstore.url}#/paths/~1pets/get', 'other'])
-  })
-
-  test('A step uses an input the workflow does not declare', async () => {
-    const { studio } = await studioWith({ steps: [{ stepId: 'findPets', operationId: 'findPets', parameters: [{ name: 'status', in: 'query', value: '$inputs.status' }] }] })
-    assert.deepEqual(messagesOf(studio), ['the input "status" is not declared'])
-  })
-
-  test('A step uses an output no step exposes', async () => {
-    const { studio } = await studioWith({ steps: ['findPets', { stepId: 'getPet', operationId: 'getPet', parameters: [{ name: 'petId', in: 'path', value: '$steps.findPets.outputs.petId' }] }] })
-    assert.deepEqual(problemsOfStep(studio, 'getPet').map((problem) => problem.message), ['"findPets" has no output "petId"'])
-    assert.deepEqual(studio.view().diagram.edges.filter((edge) => edge.kind === 'data').length, 1)
-  })
-
-  test('A step uses an output of a step that does not run before it', async () => {
-    const { studio } = await studioWith({ steps: [
-      { stepId: 'findPets', operationId: 'findPets', requestBody: { payload: { id: '{$steps.getPet.outputs.id}' } }, successCriteria: [{ condition: '$steps.ghost.outputs.ok == true' }] },
-      { stepId: 'getPet', operationId: 'getPet', outputs: { id: '$response.body#/id' } },
-    ] })
-    assert.deepEqual(problemsOfStep(studio, 'findPets').map((problem) => problem.message), ['no step "getPet" runs before', 'no step "ghost" runs before'])
-    assert.deepEqual(studio.view().diagram.edges.filter((edge) => edge.kind === 'data'), [])
-  })
-
-  test('A step uses the output of the step it names, not of another one', async () => {
-    const { studio } = await studioWith({ steps: ['findPets', { stepId: 'getPet', operationId: 'getPet', outputs: { id: '$response.body#/id' } },
-      { stepId: 'placeOrder', operationId: 'placeOrder', requestBody: { payload: { petId: '$steps.getPet.outputs.id', none: null, count: 1, ok: true } } }] })
     assert.deepEqual(studio.view().problems, [])
-    assert.deepEqual(studio.view().diagram.edges.filter((edge) => edge.kind === 'data').map((edge) => [edge.from, edge.to]), [['step:1', 'step:2']])
+    assert.deepEqual(studio.view().otherWorkflows, [{ workflowId: 'test', problems: 1 }])
+    assert.equal(studio.view().status, 'valid')
+    await studio.selectWorkflow({ workflowId: 'test' })
+    assert.deepEqual(found(studio), [['arazzo-document-schema', 'error', '#/workflows/1/steps', 'the workflow has no step yet: drop an operation on it']])
+    assert.deepEqual(studio.view().otherWorkflows, [])
   })
 
-  test('A step uses its own output, or the output of a step the workflow does not have', async () => {
-    const { studio } = await studioWith({ steps: [{ stepId: 'getPet', operationId: 'getPet', outputs: { id: '$response.body#/id' },
-      parameters: [{ name: 'petId', in: 'path', value: '$steps.getPet.outputs.id' }, { name: 'x', in: 'query', value: '$steps.ghost.outputs.id' }] }] })
-    assert.deepEqual(messagesOf(studio), ['no step "getPet" runs before', 'no step "ghost" runs before'])
-    assert.deepEqual(studio.view().diagram.edges.filter((edge) => edge.kind === 'data'), [])
+  test('The problems of the document are shown on every workflow', async () => {
+    const { studio } = await openedWith((document) => {
+      delete document.info.version
+      document.workflows.push({ workflowId: 'other', summary: 'Other', description: 'Another workflow', steps: [describedStep('getPet')] })
+    })
+    const documentProblem = ['arazzo-document-schema', 'error', '#/info/version', 'the document needs info.version']
+    assert.deepEqual(found(studio), [documentProblem])
+    await studio.selectWorkflow({ workflowId: 'other' })
+    assert.deepEqual(found(studio), [documentProblem])
+    assert.equal(studio.view().problems[0].line, 2)
   })
 
-  test('A workflow output refers to what no step exposes', async () => {
-    const { studio } = await studioWith({ steps: ['getPet'], outputs: { name: '$steps.getPet.outputs.name', who: '$inputs.who' } })
-    assert.deepEqual(studio.view().problems, [
-      { workflowId: 'adopt-pet', message: 'the input "who" is not declared' },
-      { workflowId: 'adopt-pet', message: '"getPet" has no output "name"' },
-    ])
+  test('The status tells errors and warnings apart', async () => {
+    const status = async (edit) => (await openedWith(edit)).studio.view().status
+    assert.equal(await status((document) => {
+      stepOf(document, 0).operationId = 'deletePet'
+      delete document.info.summary
+      delete document.workflows[0].summary
+      delete stepOf(document, 1).description
+    }), '1 error · 3 warnings')
+    assert.equal(await status((document) => {
+      stepOf(document, 0).operationId = 'deletePet'
+      stepOf(document, 1).operationId = 'deletePet'
+    }), '2 errors')
+    assert.equal(await status((document) => delete document.info.summary), '1 warning')
   })
 
-  test('A step goes to a step the workflow does not have', async () => {
-    const { studio } = await studioWith({ steps: [{ stepId: 'getPet', operationId: 'getPet', onFailure: [{ name: 'x', type: 'goto', stepId: 'gone' }, { name: 'y', type: 'goto', workflowId: 'other' }], onSuccess: [{ name: 'z', type: 'goto', stepId: 'gone2' }] }] })
-    assert.deepEqual(messagesOf(studio), ['goes to a step "gone2" the workflow does not have', 'goes to a step "gone" the workflow does not have'])
-    assert.deepEqual(studio.view().diagram.edges.filter((edge) => edge.kind === 'goto'), [])
+  const RULES = [
+    ['the arazzo field is missing', (d) => delete d.arazzo,
+      ['arazzo-document-schema', 'error', '#/arazzo', 'the document needs arazzo']],
+    ['a step holds an unknown field "operatonId"', (d) => (stepOf(d, 1).operatonId = 'getPet'),
+      ['arazzo-document-schema', 'error', '#/workflows/0/steps/1/operatonId', 'the step has an unknown field "operatonId"']],
+    ['two workflows are named "adopt-pet"', (d) => d.workflows.push(structuredClone(d.workflows[0])),
+      ['arazzo-workflowId-unique', 'error', '#/workflows/1/workflowId', 'two workflows are named "adopt-pet"']],
+    ['two steps of "adopt-pet" are named "getPet"', (d) => (stepOf(d, 2).stepId = 'getPet'),
+      ['arazzo-workflow-stepId-unique', 'error', '#/workflows/0/steps/2/stepId', 'two steps are named "getPet"']],
+    ['a workflow output is "$foo"', (d) => (d.workflows[0].outputs = { pet: '$foo' }),
+      ['arazzo-workflow-output-validation', 'error', '#/workflows/0/outputs/pet', '"$foo" is not a runtime expression']],
+    ['a workflow output reads an output no step exposes', (d) => (d.workflows[0].outputs = { pet: '$steps.getPet.outputs.name' }),
+      ['arazzo-workflow-output-validation', 'error', '#/workflows/0/outputs/pet', '"getPet" has no output "name"']],
+    ['a step output is "$foo"', (d) => (stepOf(d, 0).outputs = { petId: '$foo' }),
+      ['arazzo-step-output-validation', 'error', '#/workflows/0/steps/0/outputs/petId', '"$foo" is not a runtime expression']],
+    ['a step sends twice the query parameter "status"', (d) => (stepOf(d, 0).parameters = [{ name: 'status', in: 'query', value: 'a' }, { name: 'status', in: 'query', value: 'b' }]),
+      ['arazzo-step-parameters-validation', 'error', '#/workflows/0/steps/0/parameters/1', 'the query parameter "status" is sent twice']],
+    ['a step parameter is "$foo"', (d) => (stepOf(d, 0).parameters = [{ name: 'status', in: 'query', value: '$foo' }]),
+      ['arazzo-step-parameters-validation', 'error', '#/workflows/0/steps/0/parameters/0/value', '"$foo" is not a runtime expression']],
+    ['a step parameter reads an output of a step that runs after it', (d) => {
+      stepOf(d, 1).outputs = { id: '$response.body#/id' }
+      stepOf(d, 0).parameters = [{ name: 'status', in: 'query', value: '$steps.getPet.outputs.id' }]
+    }, ['arazzo-step-parameters-validation', 'error', '#/workflows/0/steps/0/parameters/0/value', '"getPet" does not run before "findPets"']],
+    ['a step parameter refers to "$components.parameters.missing"', (d) => (stepOf(d, 0).parameters = [{ reference: '$components.parameters.missing' }]),
+      ['arazzo-step-parameters-validation', 'error', '#/workflows/0/steps/0/parameters/0', 'the components hold no parameters.missing']],
+    ['two success actions of a step are both named "done"', (d) => (stepOf(d, 0).onSuccess = [{ name: 'done', type: 'end' }, { name: 'done', type: 'end' }]),
+      ['arazzo-step-success-actions-validation', 'error', '#/workflows/0/steps/0/onSuccess/1/name', 'two actions are named "done"']],
+    ['a success action names both a stepId and a workflowId', (d) => (stepOf(d, 0).onSuccess = [{ name: 'next', type: 'goto', stepId: 'getPet', workflowId: 'adopt-pet' }]),
+      ['arazzo-step-success-actions-validation', 'error', '#/workflows/0/steps/0/onSuccess/0', 'a goto goes either to a stepId or to a workflowId']],
+    ['a failure action goes to the step "gone" the workflow does not have', (d) => (stepOf(d, 0).onFailure = [{ name: 'back', type: 'goto', stepId: 'gone' }]),
+      ['arazzo-step-failure-actions-validation', 'error', '#/workflows/0/steps/0/onFailure/0', 'goes to the step "gone" the workflow does not have']],
+    ['a workflow depends on the workflow "gone"', (d) => (d.workflows[0].dependsOn = ['gone']),
+      ['arazzo-workflow-depends-on-validation', 'error', '#/workflows/0/dependsOn/0', 'the document has no workflow "gone"']],
+    ['a success criterion has a type but no context', (d) => (stepOf(d, 0).successCriteria = [{ condition: '$statusCode == 200', type: 'simple' }]),
+      ['arazzo-step-success-criteria-validation', 'error', '#/workflows/0/steps/0/successCriteria/0/context', 'a criterion with a type needs a context']],
+    ['a regex success criterion has the condition "^(200"', (d) => (stepOf(d, 0).successCriteria = [{ context: '$statusCode', condition: '^(200', type: 'regex' }]),
+      ['arazzo-step-success-criteria-validation', 'error', '#/workflows/0/steps/0/successCriteria/0/condition', '"^(200" is not a regular expression']],
+    ['a success criterion has the context "hello"', (d) => (stepOf(d, 0).successCriteria = [{ context: 'hello', condition: '^200$', type: 'regex' }]),
+      ['arazzo-step-success-criteria-validation', 'error', '#/workflows/0/steps/0/successCriteria/0/context', '"hello" is not a runtime expression']],
+    ['a step calls both an operationId and a workflowId', (d) => (stepOf(d, 0).workflowId = 'adopt-pet'),
+      ['arazzo-step-validation', 'error', '#/workflows/0/steps/0', 'a step calls exactly one of operationId, operationPath or workflowId']],
+    ['a step calls "deletePet", which no described API offers', (d) => (stepOf(d, 0).operationId = 'deletePet'),
+      ['arazzo-step-validation', 'error', '#/workflows/0/steps/0/operationId', '"deletePet" is not an operation of "petstore"']],
+    ['a request body has the content type "json"', (d) => (stepOf(d, 2).requestBody = { contentType: 'json', payload: { id: 1 } }),
+      ['arazzo-step-request-body-validation', 'error', '#/workflows/0/steps/2/requestBody/contentType', '"json" is not a media type such as application/json']],
+    ['the title holds a "<script>" tag', (d) => (d.info.title = 'Adopt <script>alert(1)</script>'),
+      ['arazzo-no-script-tags-in-markdown', 'error', '#/info/title', 'the title holds a <script> tag']],
+    ['the document has no info.description', (d) => delete d.info.description,
+      ['arazzo-info-description', 'warning', '#/info/description', 'the document has no info.description']],
+    ['an API description has no type', (d) => delete d.sourceDescriptions[0].type,
+      ['arazzo-source-descriptions-type', 'warning', '#/sourceDescriptions/0/type', 'the API description "petstore" does not say its type, openapi or arazzo']],
+    ['a workflow is named "adopt pet"', (d) => (d.workflows[0].workflowId = 'adopt pet'),
+      ['arazzo-workflow-workflowId', 'warning', '#/workflows/0/workflowId', 'the workflow id "adopt pet" should only use letters, digits, "_" and "-"']],
+    ['a workflow has no description', (d) => delete d.workflows[0].description,
+      ['arazzo-workflow-description', 'warning', '#/workflows/0/description', 'the workflow has no description']],
+    ['a workflow has no summary', (d) => delete d.workflows[0].summary,
+      ['arazzo-workflow-summary', 'warning', '#/workflows/0/summary', 'the workflow has no summary']],
+    ['a step is named "get pet"', (d) => (stepOf(d, 1).stepId = 'get pet'),
+      ['arazzo-step-stepId', 'warning', '#/workflows/0/steps/1/stepId', 'the step id "get pet" should only use letters, digits, "_" and "-"']],
+    ['a step has no description', (d) => delete stepOf(d, 1).description,
+      ['arazzo-step-description', 'warning', '#/workflows/0/steps/1/description', 'the step has no description']],
+    ['a step calls an operationPath', (d) => {
+      delete stepOf(d, 0).operationId
+      stepOf(d, 0).operationPath = '{$sourceDescriptions.petstore.url}#/paths/~1pets/get'
+    }, ['arazzo-step-operationPath', 'warning', '#/workflows/0/steps/0/operationPath', 'the step calls an operationPath: an operationId names the operation better']],
+  ]
+
+  describe('The canvas applies the rules of spectral:arazzo', () => {
+    for (const [mistake, edit, problem] of RULES) {
+      test(`a document where ${mistake}`, async () => {
+        const { studio } = await openedWith(edit)
+        assert.deepEqual(found(studio), [problem])
+      })
+    }
   })
 
   test('A document opened with mistakes stays editable', async () => {
     const { studio } = await studioWith({ steps: ['getPet', 'getPet'] })
-    assert.deepEqual(studio.view().problems, [
-      { workflowId: 'adopt-pet', stepId: 'getPet', message: 'two steps are named "getPet"' },
-      { workflowId: 'adopt-pet', stepId: 'getPet', message: 'two steps are named "getPet"' },
-    ])
+    assert.deepEqual(found(studio), [['arazzo-workflow-stepId-unique', 'error', '#/workflows/0/steps/1/stepId', 'two steps are named "getPet"']])
     assert.deepEqual(studio.view().diagram.nodes.filter((node) => node.kind === 'step').map((node) => node.stepId), ['getPet', 'getPet'])
+    assert.deepEqual(studio.view().diagram.nodes.map((node) => node.problems?.length), [undefined, 0, 1, undefined])
     await studio.addStep({ operation: 'petstore.findPets' })
     assert.equal(studio.view().diagram.nodes.length, 5)
-  })
-
-  test('A document declares the Arazzo version it follows', async () => {
-    const documents = new InMemoryDocuments()
-    const studio = createStudio({ documents, sources: new InMemorySources(), assistant: new RecordingAssistant() })
-    const versionProblem = async (arazzo) => {
-      documents.files.set(PATH, { arazzo, info: { title: 't', version: '1' }, sourceDescriptions: [{ name: 'petstore', url: 'petstore.yaml' }], workflows: [{ workflowId: 'w', steps: [{ stepId: 'findPets', operationId: 'findPets' }] }] })
-      await studio.open({ path: PATH })
-      return studio.view().problems.map((problem) => problem.message)
-    }
-    for (const valid of ['1.0.0', '1.0.1', '1.10.0', '1.0.12']) assert.deepEqual(await versionProblem(valid), [], valid)
-    for (const invalid of ['21.0.0', '1.0.1-rc', '1.0', 'v1.0.0']) {
-      assert.deepEqual(await versionProblem(invalid), [`the document must declare an Arazzo version 1.x.y, not "${invalid}"`], invalid)
-    }
-  })
-
-  test('A document missing what Arazzo requires', async () => {
-    const documents = new InMemoryDocuments()
-    documents.files.set(PATH, { arazzo: '2.0.0', workflows: [{ workflowId: 'a' }, { workflowId: 'a', steps: [{ operationId: 'getPet' }] }, { steps: [] }] })
-    const studio = createStudio({ documents, sources: new InMemorySources(), assistant: new RecordingAssistant() })
-    await studio.open({ path: PATH })
-    assert.deepEqual(studio.view().problems, [
-      { message: 'the document must declare an Arazzo version 1.x.y, not "2.0.0"' },
-      { message: 'the document needs a title in info.title' },
-      { message: 'the document needs a version in info.version' },
-      { message: 'the document describes no API: add the OpenAPI description its steps call' },
-      { message: 'two workflows are named "a"' },
-      { workflowId: 'a', message: 'the workflow has no step yet: drop an operation on it' },
-      { workflowId: 'a', stepId: undefined, message: 'needs a stepId' },
-      { workflowId: undefined, message: 'a workflow needs a workflowId' },
-      { workflowId: undefined, message: 'the workflow has no step yet: drop an operation on it' },
-    ])
-    assert.deepEqual(studio.view().workflows.map((workflow) => workflow.steps), [0, 1, 0])
-    assert.deepEqual(studio.view().workflow.steps, [])
-    assert.deepEqual(studio.view().diagram.nodes.map((node) => node.id), ['inputs', 'outputs'])
-  })
-
-  test('A step without id and the actions of another one are drawn as they are', async () => {
-    const { studio } = await studioWith({ steps: [{ operationId: 'getPet' }, { stepId: 'findPets', operationId: 'findPets', onSuccess: [{ name: 'done', type: 'end' }] }] })
-    assert.deepEqual(studio.view().diagram.edges.map((edge) => edge.kind), ['sequence', 'sequence', 'sequence', 'end'])
-  })
-
-  test('A document without any workflow', async () => {
-    const documents = new InMemoryDocuments()
-    documents.files.set(PATH, { info: { title: 't', version: '1' }, sourceDescriptions: [{ name: 'petstore', url: 'petstore.yaml' }] })
-    const studio = createStudio({ documents, sources: new InMemorySources(), assistant: new RecordingAssistant() })
-    const view = await studio.open({ path: PATH })
-    assert.deepEqual([view.workflowId, view.workflow, view.diagram, view.workflows], [null, null, null, []])
-    assert.deepEqual(view.problems.map((problem) => problem.message), ['the document must declare an Arazzo version 1.x.y, not ""', 'the document has no workflow'])
-    assert.equal(view.operations.length, 3)
   })
 })
 
 describe('Ask Copilot about the workflow', () => {
   test('Ask about a selected step', async () => {
-    const { studio, assistant } = await studioWith({ steps: ['findPets', { stepId: 'getPet', operationId: 'getPet', parameters: [{ name: 'petId', in: 'path', value: '$steps.findPets.outputs.petId' }, { name: 'id', in: 'query', value: '$inputs.id' }] }] })
+    const getPet = { ...describedStep('getPet'), parameters: [{ name: 'petId', in: 'path', value: '$steps.findPets.outputs.petId' }, { name: 'id', in: 'query', value: '$inputs.id' }] }
+    const { studio, assistant } = await studioWith({ steps: ['findPets', getPet] })
 
     assert.deepEqual(await studio.ask({ question: '  how do I pass the pet id?  ', stepId: 'getPet' }), { asked: true })
 
@@ -182,11 +170,11 @@ describe('Ask Copilot about the workflow', () => {
       'how do I pass the pet id?',
       '',
       'The step:',
-      JSON.stringify({ stepId: 'getPet', operationId: 'getPet', parameters: [{ name: 'petId', in: 'path', value: '$steps.findPets.outputs.petId' }, { name: 'id', in: 'query', value: '$inputs.id' }] }, null, 2),
+      JSON.stringify(getPet, null, 2),
       '',
       'Its problems:',
-      '- the input "id" is not declared',
-      '- "findPets" has no output "petId"',
+      '- line 25, error arazzo-step-parameters-validation: "findPets" has no output "petId"',
+      '- line 28, error arazzo-step-parameters-validation: the input "id" is not declared',
       '',
       'Change the workflow through the actions of the "arazzo" canvas (get_workflow, add_step, link_data, …) so the developer sees it.',
     ].join('\n'))
@@ -199,16 +187,19 @@ describe('Ask Copilot about the workflow', () => {
   })
 
   test('Ask about a document without any workflow', async () => {
-    const documents = new InMemoryDocuments()
-    documents.files.set(PATH, { arazzo: '1.0.1', info: { title: 't', version: '1' } })
-    const assistant = new RecordingAssistant()
-    const studio = createStudio({ documents, sources: new InMemorySources(), assistant })
+    const { studio, documents, assistant } = studioOn()
+    documents.put(PATH, { arazzo: '1.0.1', info: { title: 't', version: '1' } })
     await studio.open({ path: PATH })
     await studio.ask({ question: 'how do I start?' })
     assert.equal(assistant.prompts[0], [
       `About the Arazzo document ${PATH}:`, 'how do I start?', '',
       `The document:\n${JSON.stringify({ arazzo: '1.0.1', info: { title: 't', version: '1' } }, null, 2)}`, '',
-      'Its problems:\n- the document describes no API: add the OpenAPI description its steps call\n- the document has no workflow', '',
+      'Its problems:',
+      '- line 1, error arazzo-document-schema: the document needs sourceDescriptions',
+      '- line 1, error arazzo-document-schema: the document needs workflows',
+      '- line 1, error arazzo-step-validation: the document describes no API: add the OpenAPI description its steps call',
+      '- line 2, warning arazzo-info-description: the document has no info.description',
+      '- line 2, warning arazzo-info-summary: the document has no info.summary', '',
       'Change the workflow through the actions of the "arazzo" canvas (get_workflow, add_step, link_data, …) so the developer sees it.',
     ].join('\n'))
   })
@@ -220,20 +211,20 @@ describe('Ask Copilot about the workflow', () => {
     assert.ok(assistant.prompts[0].startsWith(`About the Arazzo workflow "order-pet" in ${PATH}:\nwhat now?\n\nThe workflow:\n{\n  "workflowId": "order-pet",`), assistant.prompts[0])
   })
 
-  test('Ask about the whole workflow', async () => {
-    const { studio, assistant } = await studioWith({ steps: ['findPets', { operationId: 'getPet' }] })
+  test('Ask about the whole workflow, one of its steps having no id', async () => {
+    const { studio, assistant } = await studioWith({ steps: ['findPets', { description: 'Read', operationId: 'getPet' }] })
     await studio.ask({ question: 'what is missing?' })
     const prompt = assistant.prompts[0]
     assert.ok(prompt.startsWith(`About the Arazzo workflow "adopt-pet" in ${PATH}:\nwhat is missing?\n\nThe workflow:\n{\n  "workflowId": "adopt-pet",`), prompt)
-    assert.ok(prompt.includes('\n\nIts problems:\n- needs a stepId\n\n'), prompt)
+    assert.ok(prompt.includes('\n\nIts problems:\n- line 19, error arazzo-document-schema: the step needs stepId\n\n'), prompt)
   })
 
   test('Ask about a workflow keeps the problems of the document and of that workflow only', async () => {
     const { studio, assistant } = await studioWith({ steps: ['deletePet'] })
-    await studio.addWorkflow({ workflowId: 'other' })
+    await studio.addWorkflow({ workflowId: 'other', summary: 'Other' })
     await studio.selectWorkflow({ workflowId: 'adopt-pet' })
     await studio.ask({ question: 'why?' })
-    assert.ok(assistant.prompts[0].includes('Its problems:\n- "deletePet" is not an operation of "petstore"\n\n'), assistant.prompts[0])
+    assert.ok(assistant.prompts[0].includes('Its problems:\n- line 18, error arazzo-step-validation: "deletePet" is not an operation of "petstore"\n\n'), assistant.prompts[0])
   })
 
   test('Ask with nothing to ask, or about a step the workflow does not have', async () => {

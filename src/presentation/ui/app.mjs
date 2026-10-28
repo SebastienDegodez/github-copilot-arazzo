@@ -1,13 +1,18 @@
-// The panel of the Arazzo canvas: renders the studio view pushed over SSE, and turns drags, drops and
-// forms into the canvas actions posted to the loopback server.
+// The panel of the Arazzo canvas: renders the studio view pushed over SSE, and turns drags, drops,
+// forms and the YAML typed into the canvas actions posted to the loopback server.
 const token = window.CANVAS_TOKEN
 const $ = (id) => document.getElementById(id)
 const DRAG_TYPE = 'application/x-arazzo'
 const SVG = 'http://www.w3.org/2000/svg'
+const PLACES = ['query', 'path', 'header', 'cookie', 'body']
+const TYPING_DELAY = 400
 
 let view = null
 let selected = null
 let dragging = null
+let focusSlot = null
+let currentLine = null
+let typing = null
 
 const h = (tag, attributes = {}, ...children) => {
   const element = document.createElement(tag)
@@ -16,6 +21,7 @@ const h = (tag, attributes = {}, ...children) => {
     if (key.startsWith('on')) element.addEventListener(key.slice(2), value)
     else if (key === 'dataset') Object.assign(element.dataset, value)
     else if (key === 'style') Object.assign(element.style, value)
+    else if (key === 'value') element.value = value
     else element.setAttribute(key, value === true ? '' : value)
   }
   element.append(...children.flat().filter((child) => child !== null && child !== undefined && child !== false))
@@ -34,7 +40,7 @@ const toast = (message) => {
   box.textContent = message
   box.hidden = false
   clearTimeout(toastTimer)
-  toastTimer = setTimeout(() => (box.hidden = true), 5000)
+  toastTimer = setTimeout(() => (box.hidden = true), 6000)
 }
 
 const api = async (name, input = {}) => {
@@ -51,14 +57,15 @@ const api = async (name, input = {}) => {
   return body.result ?? {}
 }
 
-/** A small form in a dialog; resolves with its values, or null when cancelled. */
-const form = (title, fields) => new Promise((resolve) => {
+/** A small form in a dialog; resolves with its values, or null when cancelled. `extra` goes under the fields. */
+const form = (title, fields, extra = null) => new Promise((resolve) => {
   const dialog = $('dialog')
   $('dialog-title').textContent = title
   $('dialog-fields').replaceChildren(...fields.map((field) => h('label', {}, field.label,
     field.options
       ? h('select', { name: field.name, 'data-testid': `field-${field.name}` }, field.options.map((option) => h('option', { value: option, selected: option === field.value }, option)))
-      : h('input', { name: field.name, value: field.value ?? '', required: field.required !== false, type: field.type ?? 'text', 'data-testid': `field-${field.name}`, placeholder: field.placeholder }))))
+      : h('input', { name: field.name, value: field.value ?? '', required: field.required !== false, type: field.type ?? 'text', 'data-testid': `field-${field.name}`, placeholder: field.placeholder }))),
+  extra ?? [])
   dialog.returnValue = ''
   dialog.onclose = () => {
     if (dialog.returnValue !== 'ok') return resolve(null)
@@ -69,6 +76,16 @@ const form = (title, fields) => new Promise((resolve) => {
 })
 
 const stepOf = (stepId) => view?.workflow?.steps.find((step) => step.stepId === stepId)
+const plural = (n, word) => `${n} ${word}${n > 1 ? 's' : ''}`
+
+/* ---------- views: diagram, split, YAML ---------- */
+
+const setView = (mode) => {
+  document.body.classList.remove('view-diagram', 'view-split', 'view-yaml')
+  document.body.classList.add(`view-${mode}`)
+  for (const button of document.querySelectorAll('[data-view]')) button.setAttribute('aria-pressed', String(button.dataset.view === mode))
+}
+const viewMode = () => ['diagram', 'split', 'yaml'].find((mode) => document.body.classList.contains(`view-${mode}`))
 
 /* ---------- drag and drop ---------- */
 
@@ -116,25 +133,50 @@ const link = (payload, to) => api('link_data', { from: fromOf(payload), to })
 const linkToNewParameter = async (payload, stepId) => {
   const values = await form(`Pass ${payload.kind === 'input' ? `$inputs.${payload.name}` : `outputs.${payload.output}`} to ${stepId}`, [
     { name: 'name', label: 'Parameter or body property', value: payload.output ?? payload.name },
-    { name: 'in', label: 'In', options: ['query', 'path', 'header', 'cookie', 'body'], value: 'query' },
+    { name: 'in', label: 'In', options: PLACES, value: 'query' },
   ])
   if (values) await link(payload, { stepId, name: values.name, in: values.in })
 }
 
 /* ---------- rendering ---------- */
 
+const timeOf = (iso) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+
 const renderBar = () => {
   $('path').textContent = view.path
-  const count = view.problems.length
-  $('status').textContent = count ? `${count} problem${count > 1 ? 's' : ''}` : 'valid'
-  $('status').classList.toggle('has-problems', count > 0)
+  $('path').title = view.path
+  $('status').textContent = view.status
+  $('status').className = `status${view.problems.some((problem) => problem.severity === 'error') ? ' has-errors' : view.problems.length ? ' has-warnings' : ''}`
   $('workflows').replaceChildren(...view.workflows.map((workflow) =>
     h('option', { value: workflow.workflowId, selected: workflow.workflowId === view.workflowId }, `${workflow.workflowId} (${workflow.steps})`)))
+  const { save, yaml } = view
+  const status = $('save-status')
+  if (yaml.error) [status.textContent, status.className] = [`YAML does not parse (line ${yaml.error.line})`, 'save-status danger']
+  else if (save.error) [status.textContent, status.className] = [`Not saved: ${save.error}`, 'save-status danger']
+  else if (save.dirty) [status.textContent, status.className] = ['Modified', 'save-status modified']
+  else [status.textContent, status.className] = [save.savedAt ? `Saved at ${timeOf(save.savedAt)}` : 'Saved', 'save-status saved']
+  status.dataset.state = yaml.error ? 'invalid' : save.dirty ? 'modified' : 'saved'
+  $('autosave').checked = save.autosave
+  $('save').disabled = !save.dirty || Boolean(yaml.error)
+  $('undo').disabled = !save.canUndo
+  $('redo').disabled = !save.canRedo
+  $('conflict').hidden = !save.conflict
 }
 
 const renderPalette = () => {
   $('inputs').replaceChildren(...(view.workflow?.inputs ?? []).map((name) =>
     draggable(h('span', { class: 'chip', title: `$inputs.${name}`, 'data-testid': `input-${name}` }, name), { kind: 'input', name })))
+  $('sources').replaceChildren(...(view.sources.length ? view.sources.map((source) => h('li', { class: `source-item${source.state === 'read' ? '' : ' unreadable'}`, 'data-testid': `source-${source.name}` },
+    h('div', { class: 'source-head' },
+      h('strong', {}, source.name),
+      h('button', { type: 'button', class: 'link remove', title: `Stop describing ${source.name}`, 'aria-label': `Remove ${source.name}`, 'data-testid': `remove-source-${source.name}`,
+        onclick: () => api('remove_source', { name: source.name }) }, '×')),
+    h('div', { class: 'source-badges' },
+      h('span', { class: 'badge' }, source.type ?? '?'),
+      h('span', { class: `badge state ${source.state === 'read' ? 'ok' : 'bad'}`, 'data-testid': `source-state-${source.name}` }, source.state)),
+    h('code', { class: 'url' }, source.url),
+    h('span', { class: 'hint' }, source.state === 'read' ? plural(source.operations, 'operation') : source.message)))
+    : [h('li', { class: 'hint' }, 'No API described yet.')]))
   const bySource = Map.groupBy(view.operations, (operation) => operation.source)
   $('operations').replaceChildren(...[...bySource].flatMap(([source, operations]) => [
     h('div', { class: 'source' }, source),
@@ -164,19 +206,37 @@ const renderEdges = (diagram) => {
   return [layer, ...labels]
 }
 
+const badges = (problems) => ['error', 'warning'].map((severity) => {
+  const of = problems.filter((problem) => problem.severity === severity)
+  return of.length ? h('span', { class: `badge ${severity}`, title: of.map((problem) => problem.message).join('\n'), 'data-testid': `badge-${severity}` }, `${severity === 'error' ? '✕' : '⚠'} ${of.length}`) : null
+})
+
+/** Selects a step and asks the value of one of its slots. */
+const askValue = (stepId, slot) => {
+  focusSlot = `${slot.in}-${slot.name}`
+  select(stepId)
+}
+
 const stepNode = (node) => {
   const step = stepOf(node.stepId) ?? { slots: [], outputs: {}, operationId: '' }
+  const severity = node.problems.some((problem) => problem.severity === 'error') ? ' has-errors' : node.problems.length ? ' has-warnings' : ''
   const element = h('div', {
-    class: `node step${node.problems?.length ? ' has-problems' : ''}${selected === node.stepId ? ' selected' : ''}`,
+    class: `node step${severity}${selected === node.stepId ? ' selected' : ''}`,
     tabindex: 0, role: 'button', 'data-testid': `step-${node.stepId}`, 'data-step-id': node.stepId,
     style: { left: `${node.x}px`, top: `${node.y}px`, width: `${node.width}px`, height: `${node.height}px` },
     onclick: () => select(node.stepId), onkeydown: (event) => event.key === 'Enter' && select(node.stepId),
   },
-  h('div', { class: 'title' }, h('span', { class: 'number' }, String(node.index + 1)), h('span', {}, node.stepId),
-    node.problems?.length ? h('span', { class: 'badge', title: node.problems.join('\n') }, `⚠ ${node.problems.length}`) : null),
+  h('div', { class: 'title' }, h('span', { class: 'number' }, String(node.index + 1)), h('span', { class: 'name' }, node.stepId), h('span', { class: 'badges' }, badges(node.problems))),
   h('div', { class: 'endpoint mono' }, node.operation ? `${node.operation.method} ${node.operation.path}` : step.operationId),
   h('div', { class: 'row' }, h('span', { class: 'label' }, 'in'), step.slots.map((slot) => dropTarget(
-    h('span', { class: `chip slot${slot.value ? ' bound' : ''}${slot.required ? ' required' : ''}`, title: slot.value ?? 'drop a value here', 'data-testid': `slot-${node.stepId}-${slot.in}-${slot.name}` }, `${slot.in} ${slot.name}`),
+    h('span', {
+      class: `chip slot${slot.value === null ? '' : ' bound'}${slot.required ? ' required' : ''}`, title: slot.value ?? 'click to give a value, or drop one here',
+      'data-testid': `slot-${node.stepId}-${slot.in}-${slot.name}`,
+      onclick: (event) => {
+        event.stopPropagation()
+        askValue(node.stepId, slot)
+      },
+    }, `${slot.in} ${slot.name}`),
     isValue, (payload) => link(payload, { stepId: node.stepId, name: slot.name, in: slot.in })))),
   h('div', { class: 'row' }, h('span', { class: 'label' }, 'out'), Object.keys(step.outputs).map((output) =>
     draggable(h('span', { class: 'chip', title: step.outputs[output], 'data-testid': `output-${node.stepId}-${output}` }, output), { kind: 'output', stepId: node.stepId, output }))))
@@ -216,6 +276,31 @@ const renderDiagram = () => {
   canvas.replaceChildren(...renderEdges(diagram), ...diagram.nodes.map((node) => (node.kind === 'step' ? stepNode(node) : ioNode(node))))
 }
 
+/** A value of a step, edited in place: Enter or leaving the field gives it, an empty field stops sending it. */
+const valueRow = (step, slot) => {
+  const key = `${slot.in}-${slot.name}`
+  const apply = async (input) => {
+    const value = input.value.trim()
+    if (value === (slot.value ?? '')) return
+    if (value) await api('set_step_value', { stepId: step.stepId, name: slot.name, in: slot.in, value })
+    else await api('clear_step_value', { stepId: step.stepId, name: slot.name, in: slot.in })
+  }
+  return h('li', { class: 'value-row', 'data-testid': `value-row-${key}` },
+    h('label', { for: `value-${key}`, class: 'value-label' }, h('code', {}, `${slot.in} ${slot.name}`), slot.required ? h('span', { class: 'required', title: 'required' }, '*') : null),
+    h('div', { class: 'value-field' },
+      h('textarea', {
+        id: `value-${key}`, rows: 1, value: slot.value ?? '', placeholder: 'a value, or $inputs.…', 'data-testid': `value-${key}`, spellcheck: 'false',
+        onkeydown: (event) => {
+          if (event.key !== 'Enter') return
+          event.preventDefault()
+          apply(event.target)
+        },
+        onchange: (event) => apply(event.target),
+      }),
+      slot.value === null ? null : h('button', { type: 'button', class: 'link clear', title: `Stop sending ${slot.in} ${slot.name}`, 'aria-label': `Clear ${slot.in} ${slot.name}`, 'data-testid': `clear-${key}`,
+        onclick: () => api('clear_step_value', { stepId: step.stepId, name: slot.name, in: slot.in }) }, '×')))
+}
+
 const renderDetails = () => {
   const step = stepOf(selected)
   const details = $('details')
@@ -229,9 +314,17 @@ const renderDetails = () => {
   }
   details.replaceChildren(
     h('h2', {}, `Step ${step.stepId}`),
+    h('dl', {}, h('dt', {}, 'calls'), h('dd', {}, h('code', {}, step.operationId ?? '—'))),
+    h('h3', {}, 'Sends', h('button', { type: 'button', class: 'link', 'data-testid': 'add-parameter', onclick: async () => {
+      const values = await form(`Value sent by ${step.stepId}`, [
+        { name: 'name', label: 'Parameter or body property' },
+        { name: 'in', label: 'In', options: PLACES, value: 'query' },
+        { name: 'value', label: 'Value: fixed, or an expression such as $inputs.status' },
+      ])
+      if (values) await api('set_step_value', { stepId: step.stepId, ...values })
+    } }, '+ Parameter')),
+    step.slots.length ? h('ul', { class: 'values', 'data-testid': 'values' }, step.slots.map((slot) => valueRow(step, slot))) : h('p', { class: 'hint' }, 'Its operation takes no parameter.'),
     h('dl', {},
-      h('dt', {}, 'calls'), h('dd', {}, h('code', {}, step.operationId ?? '—')),
-      h('dt', {}, 'sends'), h('dd', {}, step.slots.length ? step.slots.map((slot) => h('div', {}, h('code', {}, `${slot.in} ${slot.name}`), ' ← ', h('code', {}, slot.value ?? '—'))) : '—'),
       h('dt', {}, 'outputs'), h('dd', {}, Object.keys(step.outputs).length ? Object.entries(step.outputs).map(([name, expression]) => h('div', {}, h('code', {}, name), ' ← ', h('code', {}, expression))) : '—'),
       h('dt', {}, 'success'), h('dd', {}, step.successCriteria.length ? step.successCriteria.map((condition) => h('div', {}, h('code', {}, condition))) : '—')),
     h('div', { class: 'buttons' },
@@ -260,13 +353,67 @@ const renderDetails = () => {
       h('button', { type: 'button', class: 'danger', 'data-testid': 'remove-step', onclick: async () => {
         if (await api('remove_step', { stepId: step.stepId })) selected = null
       } }, 'Remove')))
+  if (focusSlot) {
+    const field = $(`value-${focusSlot}`)
+    focusSlot = null
+    field?.focus()
+  }
+}
+
+/** Shows the line of a problem in the YAML, opening the YAML beside the diagram when it is hidden. */
+const goToLine = (line) => {
+  if (viewMode() === 'diagram') setView('split')
+  currentLine = line
+  const box = $('yaml-text')
+  const lines = box.value.split('\n')
+  const start = lines.slice(0, line - 1).reduce((sum, each) => sum + each.length + 1, 0)
+  box.focus({ preventScroll: true })
+  box.setSelectionRange(start, start + (lines[line - 1]?.length ?? 0))
+  const height = parseFloat(getComputedStyle(box).lineHeight)
+  box.scrollTop = Math.max(0, (line - 3) * height)
+  renderGutter()
 }
 
 const renderProblems = () => {
-  const problems = view.problems
+  const problems = [...view.problems].sort((a, b) => (a.severity === b.severity ? a.line - b.line : a.severity === 'error' ? -1 : 1))
   $('problems').replaceChildren(...(problems.length
-    ? problems.map((problem) => h('li', { onclick: () => problem.stepId && select(problem.stepId) }, problem.stepId ? `${problem.stepId}: ${problem.message}` : problem.message))
-    : [h('li', { class: 'none' }, 'No problem: the document is valid Arazzo.')]))
+    ? problems.map((problem) => h('li', {
+      class: `problem ${problem.severity}`, tabindex: 0, 'data-testid': 'problem', 'data-line': problem.line, title: `${problem.rule} · ${problem.pointer}`,
+      onclick: () => {
+        goToLine(problem.line)
+        if (problem.stepId && stepOf(problem.stepId)) select(problem.stepId)
+      },
+      onkeydown: (event) => event.key === 'Enter' && event.currentTarget.click(),
+    },
+    h('span', { class: 'severity' }, problem.severity === 'error' ? '✕' : '⚠'),
+    h('span', { class: 'message' }, problem.stepId ? h('strong', {}, `${problem.stepId}: `) : null, problem.message),
+    h('span', { class: 'where' }, `line ${problem.line} · ${problem.rule}`)))
+    : [h('li', { class: 'none' }, 'No problem: the document follows the spectral:arazzo rules.')]))
+  $('others').replaceChildren(...view.otherWorkflows.map((other) => h('li', {},
+    h('button', { type: 'button', class: 'link', 'data-testid': `other-workflow-${other.workflowId}`, onclick: () => api('select_workflow', { workflowId: other.workflowId }) },
+      `workflow ${other.workflowId}: ${plural(other.problems, 'problem')}`))))
+}
+
+const renderGutter = () => {
+  const count = $('yaml-text').value.split('\n').length
+  const errorLine = view?.yaml.error?.line
+  $('gutter').replaceChildren(...Array.from({ length: count }, (_, i) => h('div', {
+    class: `${i + 1 === errorLine ? 'error' : ''}${i + 1 === currentLine ? ' current' : ''}`.trim() || null, 'data-line': i + 1,
+  }, String(i + 1))))
+  $('gutter').scrollTop = $('yaml-text').scrollTop
+}
+
+const renderYaml = () => {
+  const box = $('yaml-text')
+  if (typing === null && box.value !== view.yaml.text) {
+    const [start, end] = [box.selectionStart, box.selectionEnd]
+    box.value = view.yaml.text
+    if (document.activeElement === box) box.setSelectionRange(start, end)
+  }
+  const error = $('yaml-error')
+  error.hidden = !view.yaml.error
+  error.textContent = view.yaml.error ? `Line ${view.yaml.error.line}: ${view.yaml.error.message}` : ''
+  renderGutter()
 }
 
 const render = () => {
@@ -276,14 +423,28 @@ const render = () => {
   renderDiagram()
   renderDetails()
   renderProblems()
+  renderYaml()
 }
 
 function select(stepId) {
   selected = stepId
   render()
+  document.querySelector(`[data-step-id="${CSS.escape(stepId)}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
 }
 
 /* ---------- wiring ---------- */
+
+const flushYaml = async () => {
+  if (typing === null) return
+  clearTimeout(typing)
+  typing = null
+  await api('set_yaml', { text: $('yaml-text').value })
+}
+
+const save = async () => {
+  await flushYaml()
+  await api('save')
+}
 
 dropTarget($('board'), (payload) => payload.kind === 'operation' || payload.kind === 'step', (payload) =>
   (payload.kind === 'operation'
@@ -300,13 +461,67 @@ $('add-input').addEventListener('click', async () => {
   if (values) await api('add_input', values)
 })
 $('add-source').addEventListener('click', async () => {
-  const values = await form('Describe an API', [{ name: 'name', label: 'Name' }, { name: 'url', label: 'OpenAPI file (relative to the document) or URL' }])
+  const { candidates } = (await api('list_source_candidates')) ?? { candidates: [] }
+  const pick = (url) => {
+    $('dialog').querySelector('[name="url"]').value = url
+    const name = $('dialog').querySelector('[name="name"]')
+    if (!name.value) name.value = url.split('/').at(-1).split('.')[0].replace(/[^A-Za-z0-9_-]/g, '-')
+  }
+  const proposals = h('div', { class: 'candidates', 'data-testid': 'candidates' },
+    h('p', { class: 'hint' }, candidates.length ? 'Descriptions of the workspace, relative to the document:' : 'No other OpenAPI or Arazzo file in the workspace.'),
+    candidates.map((url) => h('button', { type: 'button', class: 'candidate', 'data-testid': `candidate-${url}`, onclick: () => pick(url) }, url)))
+  const values = await form('Describe an API', [
+    { name: 'name', label: 'Name' },
+    { name: 'url', label: 'OpenAPI or Arazzo file (relative to the document) or URL', placeholder: 'apis/petstore.yaml' },
+  ], proposals)
   if (values) await api('add_source', values)
 })
 $('ask').addEventListener('submit', async (event) => {
   event.preventDefault()
   const question = $('question').value
   if (await api('ask', selected ? { question, stepId: selected } : { question })) $('question').value = ''
+})
+
+$('autosave').addEventListener('change', async (event) => {
+  await flushYaml()
+  await api('set_autosave', { on: event.target.checked })
+})
+$('save').addEventListener('click', save)
+$('undo').addEventListener('click', () => api('undo'))
+$('redo').addEventListener('click', () => api('redo'))
+$('keep-mine').addEventListener('click', () => api('resolve_conflict', { keep: 'mine' }))
+$('reload-file').addEventListener('click', () => api('resolve_conflict', { keep: 'file' }))
+for (const button of document.querySelectorAll('[data-view]')) button.addEventListener('click', () => setView(button.dataset.view))
+setView('diagram')
+
+$('yaml-text').addEventListener('input', () => {
+  clearTimeout(typing)
+  typing = setTimeout(flushYaml, TYPING_DELAY)
+  renderGutter()
+})
+$('yaml-text').addEventListener('scroll', () => ($('gutter').scrollTop = $('yaml-text').scrollTop))
+$('copy-yaml').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText($('yaml-text').value)
+    toast('The YAML is in the clipboard.')
+  } catch {
+    $('yaml-text').select()
+    toast('Select all and copy: the clipboard is not available here.')
+  }
+})
+
+document.addEventListener('keydown', (event) => {
+  if (!(event.ctrlKey || event.metaKey) || event.altKey) return
+  const key = event.key.toLowerCase()
+  if (key === 's') {
+    event.preventDefault()
+    save()
+  }
+  const editing = event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement
+  if (key === 'z' && !editing) {
+    event.preventDefault()
+    api(event.shiftKey ? 'redo' : 'undo')
+  }
 })
 
 const events = new EventSource(`/events?token=${token}`)

@@ -7,14 +7,36 @@
   <link rel="stylesheet" href="/styles.css">
   <script>window.CANVAS_TOKEN = "__CANVAS_TOKEN__"</script>
 </head>
-<body>
-  <header class="bar">
-    <strong class="brand">Arazzo</strong>
-    <code id="path" data-testid="path"></code>
-    <select id="workflows" data-testid="workflows" aria-label="Workflow"></select>
-    <button id="add-workflow" type="button" title="Add a workflow">+ Workflow</button>
+<body class="view-diagram">
+  <header class="bar" data-testid="header">
+    <div class="group document">
+      <strong class="brand">Arazzo</strong>
+      <code id="path" class="path" data-testid="path"></code>
+      <select id="workflows" data-testid="workflows" aria-label="Workflow"></select>
+      <button id="add-workflow" type="button" title="Add a workflow">+ Workflow</button>
+    </div>
+    <div class="group saving" role="group" aria-label="Saving">
+      <span id="save-status" class="save-status" data-testid="save-status" aria-live="polite"></span>
+      <label class="switch" title="Save every edit at once">
+        <input id="autosave" type="checkbox" role="switch" data-testid="autosave">
+        <span>Autosave</span>
+      </label>
+      <button id="save" type="button" data-testid="save" title="Save (Ctrl+S / ⌘S)">Save</button>
+      <button id="undo" type="button" data-testid="undo" title="Undo" aria-label="Undo">↶</button>
+      <button id="redo" type="button" data-testid="redo" title="Redo" aria-label="Redo">↷</button>
+    </div>
+    <div class="group views" role="group" aria-label="View" data-testid="views">
+      <button type="button" data-view="diagram" data-testid="view-diagram">Diagram</button>
+      <button type="button" data-view="split" data-testid="view-split">Split</button>
+      <button type="button" data-view="yaml" data-testid="view-yaml">YAML</button>
+    </div>
     <span id="status" class="status" data-testid="status"></span>
   </header>
+  <div id="conflict" class="conflict" role="alert" data-testid="conflict" hidden>
+    <span>The file changed on disk while your edits are not saved.</span>
+    <button id="keep-mine" type="button" data-testid="keep-mine">Keep my edits</button>
+    <button id="reload-file" type="button" data-testid="reload-file">Reload the file</button>
+  </div>
   <div id="toast" class="toast" role="alert" data-testid="toast" hidden></div>
   <main class="layout">
     <aside class="palette" aria-label="Palette">
@@ -23,20 +45,38 @@
         <div id="inputs" class="chips" data-testid="inputs"></div>
       </section>
       <section>
-        <h2>Operations <button id="add-source" type="button" class="link" title="Describe an API">+ API</button></h2>
+        <h2>APIs <button id="add-source" type="button" class="link" title="Describe an API" data-testid="add-source">+ API</button></h2>
+        <ul id="sources" class="sources" data-testid="sources"></ul>
+      </section>
+      <section>
+        <h2>Operations</h2>
         <p class="hint">Drag an operation onto the workflow, or onto a step to insert it before.</p>
         <div id="operations" data-testid="operations"></div>
       </section>
     </aside>
-    <section id="board" class="board" data-testid="board" aria-label="Workflow diagram">
-      <div id="diagram" class="diagram"></div>
-      <p id="empty" class="empty" hidden>Open an Arazzo document to start.</p>
-    </section>
-    <aside class="inspector" aria-label="Inspector">
+    <div class="center">
+      <section id="board" class="board" data-testid="board" aria-label="Workflow diagram">
+        <div id="diagram" class="diagram"></div>
+        <p id="empty" class="empty" hidden>Open an Arazzo document to start.</p>
+      </section>
+      <section class="yaml" data-testid="yaml" aria-label="YAML">
+        <div class="yaml-bar">
+          <h2>YAML</h2>
+          <span id="yaml-error" class="yaml-error" data-testid="yaml-error" hidden></span>
+          <button id="copy-yaml" type="button" data-testid="copy-yaml">Copy</button>
+        </div>
+        <div class="editor">
+          <div id="gutter" class="gutter" data-testid="yaml-gutter" aria-hidden="true"></div>
+          <textarea id="yaml-text" spellcheck="false" wrap="off" data-testid="yaml-text" aria-label="YAML of the document"></textarea>
+        </div>
+      </section>
+    </div>
+    <aside class="inspector" aria-label="Inspector" data-testid="inspector">
       <section id="details" data-testid="details"></section>
       <section>
         <h2>Problems</h2>
         <ul id="problems" class="problems" data-testid="problems"></ul>
+        <ul id="others" class="others" data-testid="other-workflows"></ul>
       </section>
       <section>
         <h2>Ask Copilot</h2>

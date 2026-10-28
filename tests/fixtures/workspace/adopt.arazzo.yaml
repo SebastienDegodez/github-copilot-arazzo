@@ -1,6 +1,9 @@
+# Adopt a pet: find one of a status, read it, then order it.
 arazzo: 1.0.1
 info:
   title: Adopt a pet
+  summary: Adopt a pet from the petstore
+  description: Find an available pet, read it and place an order for it.
   version: 1.0.0
 sourceDescriptions:
   - name: petstore
@@ -8,17 +11,23 @@ sourceDescriptions:
     type: openapi
 workflows:
   - workflowId: adopt-pet
+    summary: Adopt a pet
+    description: Find a pet by status, read it, then order it.
     inputs:
       type: object
       properties:
         status:
           type: string
     steps:
+      # finds the pets of a status
       - stepId: findPets
+        description: Find the pets of a status
         operationId: findPets
         outputs:
           petId: $response.body#/0/id
       - stepId: getPet
+        description: Read the pet found
         operationId: getPet
       - stepId: placeOrder
+        description: Order the pet
         operationId: placeOrder
