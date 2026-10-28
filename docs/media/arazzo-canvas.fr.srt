@@ -1,0 +1,72 @@
+1
+00:00:00,400 --> 00:00:02,648
+Enchaîner des appels d’API en Arazzo ?
+
+2
+00:00:02,648 --> 00:00:04,800
+D’habitude : du YAML, à la main.
+
+3
+00:00:04,800 --> 00:00:07,857
+Voici le canvas Arazzo,
+dans l’app GitHub Copilot.
+
+4
+00:00:07,857 --> 00:00:11,397
+Il suffit de demander :
+Copilot ouvre votre workflow.
+
+5
+00:00:12,600 --> 00:00:14,617
+Les opérations de votre API sont là.
+
+6
+00:00:14,617 --> 00:00:16,129
+Glissez-les sur le canvas :
+
+7
+00:00:16,129 --> 00:00:17,810
+chaque dépôt ajoute une étape,
+
+8
+00:00:17,810 --> 00:00:19,679
+enregistrée dans le fichier.
+
+9
+00:00:19,800 --> 00:00:22,129
+Puis reliez une entrée à un paramètre.
+
+10
+00:00:23,900 --> 00:00:25,750
+Ou laissez Copilot écrire la suite.
+
+11
+00:00:25,750 --> 00:00:29,434
+Posez votre question depuis le canvas,
+sur l’étape sélectionnée.
+
+12
+00:00:30,300 --> 00:00:32,209
+Copilot modifie le même canvas.
+
+13
+00:00:32,209 --> 00:00:36,398
+Il transmet l’id de l’animal,
+relance la commande et renvoie son id.
+
+14
+00:00:36,398 --> 00:00:38,976
+Vous voyez chaque changement arriver.
+
+15
+00:00:41,900 --> 00:00:46,064
+Résultat : de l’Arazzo valide,
+écrit dans votre fichier au fil de l’eau.
+
+16
+00:00:48,000 --> 00:00:50,808
+Le canvas Arazzo pour GitHub Copilot.
+
+17
+00:00:50,808 --> 00:00:53,080
+Glisser, relier, demander.

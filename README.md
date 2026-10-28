@@ -13,6 +13,12 @@
 
 </div>
 
+[![The Arazzo canvas in the GitHub Copilot app: operations dragged from the Petstore API onto the workflow](docs/media/arazzo-canvas.gif)](https://youtu.be/a2Bo--ZJRjw)
+
+Watch the [56 s video on YouTube](https://youtu.be/a2Bo--ZJRjw), with sound and English or French
+subtitles: drag operations from an API, wire values, then ask Copilot to finish the workflow on the
+same canvas. The file is also in [docs/media](docs/media/arazzo-canvas.mp4).
+
 ![The Arazzo canvas: palette of APIs and operations, the workflow diagram, and the step inspector](docs/images/canvas-diagram.png)
 
 ## Why
@@ -127,6 +133,33 @@ npm run mutation:boundary   # Stryker, breaks under 80
 ```
 
 Every gate runs in [CI](.github/workflows/ci.yml) on each pull request.
+
+## Demo video
+
+The video is a page, not a recording: `video/scenario.mjs` plays the story on the plugin's studio
+with in-memory ports, and `video/app.jsx` renders every frame as a function of time, with the
+canvas styled by `src/presentation/ui/styles.css`. Change the canvas and the video follows. Its
+colours and type are those of [sebastiendegodez.github.io](https://sebastiendegodez.github.io).
+The exported video, its GIF loop, poster and subtitles are in `docs/media/`.
+
+The soundtrack is made from code too (`video/audio.mjs`): an original music bed and the sound
+effects are synthesized, the English narration is spoken by a macOS voice, and ffmpeg mixes them
+at −16 LUFS, the music ducked under the voice. The subtitles (English and French, SubRip) are timed
+on the spoken voice. `video/timeline.mjs` times picture, sound and subtitles alike.
+
+```sh
+npm run video               # serves it: open the printed URL; space plays, m toggles the sound, ← → jump chapters, ?t=12 starts at 12 s
+npx playwright install chromium   # once, for the export
+npm run video:export        # docs/media/arazzo-canvas.mp4 (1920×1080, 30 fps, AAC), .m4a, .gif, .png and .en/.fr.srt subtitles
+npm run video:export -- --from 12 --to 22   # a part only: arazzo-canvas-12-22.mp4
+npm run video:audio         # the soundtrack and subtitles only: arazzo-canvas.m4a, .en.srt, .fr.srt
+```
+
+The narration needs macOS and the voice *Ava (Enhanced or Premium)*: System Settings >
+Accessibility > Read & Speak > System voice ⓘ > English (US) > Ava. Pick another with
+`--voice "Zoe"`, or leave it out with `--no-voice` (music and effects only) or `--no-audio`.
+The export seeks the page frame by frame (`window.__video.seek(t)`), screenshots it with Playwright
+and encodes with ffmpeg (`ffmpeg-static`), so the result does not depend on the machine's speed.
 
 ## Releases
 

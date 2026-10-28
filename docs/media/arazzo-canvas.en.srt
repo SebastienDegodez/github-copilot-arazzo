@@ -1,0 +1,64 @@
+1
+00:00:00,400 --> 00:00:02,710
+Chaining API calls in Arazzo?
+
+2
+00:00:02,710 --> 00:00:04,800
+Usually: YAML, by hand.
+
+3
+00:00:04,800 --> 00:00:08,342
+Meet the Arazzo canvas,
+inside the GitHub Copilot app.
+
+4
+00:00:08,342 --> 00:00:11,397
+Just ask, and Copilot opens your workflow.
+
+5
+00:00:12,600 --> 00:00:14,946
+Your API operations are right there.
+
+6
+00:00:14,946 --> 00:00:19,679
+Drag them onto the canvas:
+each drop adds a step, saved to the file.
+
+7
+00:00:19,800 --> 00:00:22,129
+Then wire an input to a parameter.
+
+8
+00:00:23,900 --> 00:00:25,888
+Or let Copilot write the rest.
+
+9
+00:00:25,888 --> 00:00:29,434
+Ask from the canvas,
+about the step you selected.
+
+10
+00:00:30,300 --> 00:00:32,684
+Copilot edits the very same canvas.
+
+11
+00:00:32,684 --> 00:00:36,770
+It passes the pet id,
+retries the order, and returns its id.
+
+12
+00:00:36,770 --> 00:00:38,976
+You watch every change land.
+
+13
+00:00:41,900 --> 00:00:46,064
+The result: valid Arazzo,
+written to your file as you go.
+
+14
+00:00:48,000 --> 00:00:51,337
+The Arazzo canvas for GitHub Copilot.
+
+15
+00:00:51,337 --> 00:00:53,080
+Drag, wire, ask.
