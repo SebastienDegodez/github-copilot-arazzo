@@ -2,7 +2,7 @@
 
 ## What changes
 
-- 
+-
 
 <details>
 <summary><b>Details</b></summary>
