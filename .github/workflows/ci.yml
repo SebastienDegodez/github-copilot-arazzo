@@ -51,7 +51,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      code-quality: write   # upload the report the code_coverage rule of main evaluates
     steps:
       - uses: actions/checkout@v7
         with:
@@ -76,16 +75,6 @@ jobs:
             grep -E '^ℹ (file|all files|-| )|^# (file|all files|-| )' coverage/report.txt | sed -E 's/^(ℹ|#) //'
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-      - name: Cobertura report for GitHub Code Quality
-        run: node scripts/lcov-to-cobertura.mjs coverage/lcov.info coverage/cobertura.xml
-      # pushes to main set the baseline; pull requests are compared with it
-      - name: Upload coverage to GitHub
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-        uses: actions/upload-code-coverage@v1
-        with:
-          file: coverage/cobertura.xml
-          language: JavaScript
-          label: code-coverage/node-test
       - uses: actions/upload-artifact@v7
         if: always()
         with:

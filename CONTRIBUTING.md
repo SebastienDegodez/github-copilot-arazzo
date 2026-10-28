@@ -32,5 +32,5 @@ Thanks for helping improve the Arazzo canvas.
 Commits and pull request titles follow [Conventional Commits](https://www.conventionalcommits.org/)
 (`feat:`, `fix:`, `docs:`, `test:`, `ci:`, `chore:`…). Pull requests are squash-merged — the only
 merge method `main` accepts — so the title becomes the release note: `feat` cuts a minor release,
-`fix` a patch. A pull request merges once every CI check passes, CodeQL and Code Quality raise no
-blocking alert, line coverage stays at or above 80 % without dropping, and a code owner approves.
+`fix` a patch. A Pull request merges once every CI check passes, CodeQL raises no blocking alert, the coverage gate
+passes (100 % lines and at least 95 % branches and functions), and a code owner approves.

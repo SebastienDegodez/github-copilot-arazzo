@@ -165,9 +165,9 @@ and encodes with ffmpeg (`ffmpeg-static`), so the result does not depend on the 
 
 `main` is protected by a ruleset: changes land through a squash-merged pull request whose
 CI checks pass (tests, coverage, browser tests, mutation, Conventional Commit title), with CodeQL
-code scanning, GitHub Code Quality and a line coverage of at least 80 % that may not drop — the
-coverage job uploads a Cobertura report for it. Code owners review every change. Only the release
-job pushes to `main` directly, with a dedicated deploy key.
+code scanning. The coverage job enforces 100 % line coverage and at least 95 % branch and function
+coverage. Code owners review every change. Only the release job pushes to `main` directly, with a
+dedicated deploy key.
 
 ## Releases
 
