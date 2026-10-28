@@ -8,10 +8,11 @@
     "node": ">=22"
   },
   "scripts": {
-    "test": "node --test \"tests/acceptance/*.test.mjs\" \"tests/integration/*.test.mjs\" \"tests/architecture/*.test.mjs\"",
+    "test": "node --test \"tests/acceptance/*.test.mjs\" \"tests/integration/*.test.mjs\" \"tests/architecture/*.test.mjs\" \"tests/tooling/*.test.mjs\"",
     "test:acceptance": "node --test \"tests/acceptance/*.test.mjs\"",
     "test:integration": "node --test \"tests/integration/*.test.mjs\"",
     "test:architecture": "node --test \"tests/architecture/*.test.mjs\"",
+    "test:tooling": "node --test \"tests/tooling/*.test.mjs\"",
     "test:coverage": "mkdir -p coverage && node --test --experimental-test-coverage --test-coverage-include=\"src/**/*.mjs\" --test-coverage-exclude=\"src/infrastructure/vendor/**\" --test-coverage-exclude=\"src/presentation/ui/**\" --test-coverage-lines=100 --test-coverage-branches=95 --test-coverage-functions=95 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info \"tests/acceptance/*.test.mjs\" \"tests/integration/*.test.mjs\" \"tests/architecture/*.test.mjs\"",
     "test:e2e": "playwright test",
     "lint": "node --check src/composition.mjs && node --check src/presentation/ui/app.mjs && node --check com.github.copilot/extensions/arazzo-canvas/extension.mjs",

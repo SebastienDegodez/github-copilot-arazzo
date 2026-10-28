@@ -26,6 +26,7 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run test:architecture
+      - run: npm run test:tooling
       - name: Stryker configs follow the SKRAFT quality bar
         run: npm run quality-bar
 
@@ -48,8 +49,13 @@ jobs:
   coverage:
     name: Coverage
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      code-quality: write   # upload the report the code_coverage rule of main evaluates
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v7
         with:
           node-version: '22'
@@ -70,6 +76,16 @@ jobs:
             grep -E '^ℹ (file|all files|-| )|^# (file|all files|-| )' coverage/report.txt | sed -E 's/^(ℹ|#) //'
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+      - name: Cobertura report for GitHub Code Quality
+        run: node scripts/lcov-to-cobertura.mjs coverage/lcov.info coverage/cobertura.xml
+      # pushes to main set the baseline; pull requests are compared with it
+      - name: Upload coverage to GitHub
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/upload-code-coverage@v1
+        with:
+          file: coverage/cobertura.xml
+          language: JavaScript
+          label: code-coverage/node-test
       - uses: actions/upload-artifact@v7
         if: always()
         with:

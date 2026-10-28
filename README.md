@@ -161,6 +161,14 @@ Accessibility > Read & Speak > System voice ⓘ > English (US) > Ava. Pick anoth
 The export seeks the page frame by frame (`window.__video.seek(t)`), screenshots it with Playwright
 and encodes with ffmpeg (`ffmpeg-static`), so the result does not depend on the machine's speed.
 
+## Repository rules
+
+`main` is protected by a ruleset: changes land through a squash-merged pull request whose
+CI checks pass (tests, coverage, browser tests, mutation, Conventional Commit title), with CodeQL
+code scanning, GitHub Code Quality and a line coverage of at least 80 % that may not drop — the
+coverage job uploads a Cobertura report for it. Code owners review every change. Only the release
+job pushes to `main` directly, with a dedicated deploy key.
+
 ## Releases
 
 Versions are cut automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
