@@ -1,0 +1,58 @@
+// The actions of the Arazzo canvas: the agent invokes those marked `agent`, the panel posts any.
+const string = (description) => ({ type: 'string', description })
+const workflowId = string('Workflow to edit (default: the one shown).')
+const schema = (properties, required = []) => ({ type: 'object', properties: { workflowId, ...properties }, required, additionalProperties: false })
+const from = {
+  type: 'object',
+  description: 'Where the value comes from: { "input": name } or { "stepId": id, "output": name }.',
+  properties: { input: { type: 'string' }, stepId: { type: 'string' }, output: { type: 'string' } },
+  additionalProperties: false,
+}
+const to = {
+  type: 'object',
+  description: 'Where the value goes: the parameter `name` of the step `stepId`, `in` path, query, header, cookie or body.',
+  properties: { stepId: { type: 'string' }, name: { type: 'string' }, in: { type: 'string', enum: ['path', 'query', 'header', 'cookie', 'body'] } },
+  required: ['stepId', 'name', 'in'],
+  additionalProperties: false,
+}
+
+export const createActions = (studio) => [
+  { name: 'get_workflow', agent: true, description: 'The open Arazzo document, the workflow shown, its steps, its problems and the operations its APIs offer.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    run: () => {
+      const { document, diagram, ...view } = studio.view()
+      return { ...view, operations: view.operations.map(({ source, operationId, method, path }) => ({ operation: `${source}.${operationId}`, method, path })) }
+    } },
+  { name: 'select_workflow', agent: true, description: 'Show another workflow of the document.',
+    inputSchema: schema({}, ['workflowId']), run: (input) => studio.selectWorkflow(input) },
+  { name: 'add_workflow', agent: true, description: 'Add an empty workflow to the document and show it.',
+    inputSchema: schema({ summary: string('One line telling what the workflow does.') }, ['workflowId']), run: (input) => studio.addWorkflow(input) },
+  { name: 'add_source', agent: true, description: 'Describe an API the steps call: an OpenAPI file next to the document, or an http(s) URL.',
+    inputSchema: { type: 'object', properties: { name: string('Name of the API description.'), url: string('Path relative to the document, or URL.'), type: { type: 'string', enum: ['openapi', 'arazzo'] } }, required: ['name', 'url'], additionalProperties: false },
+    run: (input) => studio.addSource(input) },
+  { name: 'add_step', agent: true, description: 'Add a step calling an operation: `operation` as listed by get_workflow ("source.operationId"), or a raw `operationId`. Lands last, or before the step `before`.',
+    inputSchema: schema({ operation: string('Operation of the palette, "source.operationId".'), operationId: string('Raw Arazzo operationId.'), stepId: string('Step id (default: the operation name).'), before: string('Step to insert it before.') }),
+    run: (input) => studio.addStep(input) },
+  { name: 'move_step', agent: true, description: 'Move a step to a position of the workflow, from 0.',
+    inputSchema: schema({ stepId: string('Step to move.'), to: { type: 'integer', minimum: 0 } }, ['stepId', 'to']), run: (input) => studio.moveStep(input) },
+  { name: 'remove_step', agent: true, description: 'Remove a step from the workflow.',
+    inputSchema: schema({ stepId: string('Step to remove.') }, ['stepId']), run: (input) => studio.removeStep(input) },
+  { name: 'add_input', agent: true, description: 'Declare an input of the workflow.',
+    inputSchema: schema({ name: string('Input name.'), type: { type: 'string', enum: ['string', 'integer', 'number', 'boolean', 'object', 'array'] } }, ['name']),
+    run: (input) => studio.addInput(input) },
+  { name: 'set_step_output', agent: true, description: 'Expose a value of a step response as an output of the step, e.g. $response.body#/id.',
+    inputSchema: schema({ stepId: string('Step.'), name: string('Output name.'), expression: string('Runtime expression.') }, ['stepId', 'name', 'expression']),
+    run: (input) => studio.setStepOutput(input) },
+  { name: 'link_data', agent: true, description: 'Pass a workflow input or the output of an earlier step to a parameter or body property of a step.',
+    inputSchema: schema({ from, to }, ['from', 'to']), run: (input) => studio.linkData(input) },
+  { name: 'add_workflow_output', agent: true, description: 'Expose the output of a step as an output of the workflow.',
+    inputSchema: schema({ name: string('Workflow output name.'), stepId: string('Step.'), output: string('Output of the step.') }, ['name', 'stepId', 'output']),
+    run: (input) => studio.addWorkflowOutput(input) },
+  { name: 'add_success_criterion', agent: true, description: 'Add a condition telling the step succeeded, e.g. $statusCode == 200.',
+    inputSchema: schema({ stepId: string('Step.'), condition: string('Condition.') }, ['stepId', 'condition']), run: (input) => studio.addSuccessCriterion(input) },
+  { name: 'add_action', agent: true, description: 'On success or failure of a step: end the workflow, goto another step (`target`) or retry (failure only, `retryLimit`, `retryAfter` seconds).',
+    inputSchema: schema({ stepId: string('Step.'), on: { type: 'string', enum: ['success', 'failure'] }, type: { type: 'string', enum: ['end', 'goto', 'retry'] }, target: string('Step to go to.'), retryLimit: { type: 'integer', minimum: 1 }, retryAfter: { type: 'number', minimum: 0 } }, ['stepId', 'on', 'type']),
+    run: (input) => studio.addAction(input) },
+  { name: 'ask', agent: false, description: 'Hand a question about the workflow or one of its steps to Copilot.',
+    run: (input) => studio.ask(input) },
+]

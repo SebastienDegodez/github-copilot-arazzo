@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Arazzo</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script>window.CANVAS_TOKEN = "__CANVAS_TOKEN__"</script>
+</head>
+<body>
+  <header class="bar">
+    <strong class="brand">Arazzo</strong>
+    <code id="path" data-testid="path"></code>
+    <select id="workflows" data-testid="workflows" aria-label="Workflow"></select>
+    <button id="add-workflow" type="button" title="Add a workflow">+ Workflow</button>
+    <span id="status" class="status" data-testid="status"></span>
+  </header>
+  <div id="toast" class="toast" role="alert" data-testid="toast" hidden></div>
+  <main class="layout">
+    <aside class="palette" aria-label="Palette">
+      <section>
+        <h2>Inputs <button id="add-input" type="button" class="link" title="Declare an input">+</button></h2>
+        <div id="inputs" class="chips" data-testid="inputs"></div>
+      </section>
+      <section>
+        <h2>Operations <button id="add-source" type="button" class="link" title="Describe an API">+ API</button></h2>
+        <p class="hint">Drag an operation onto the workflow, or onto a step to insert it before.</p>
+        <div id="operations" data-testid="operations"></div>
+      </section>
+    </aside>
+    <section id="board" class="board" data-testid="board" aria-label="Workflow diagram">
+      <div id="diagram" class="diagram"></div>
+      <p id="empty" class="empty" hidden>Open an Arazzo document to start.</p>
+    </section>
+    <aside class="inspector" aria-label="Inspector">
+      <section id="details" data-testid="details"></section>
+      <section>
+        <h2>Problems</h2>
+        <ul id="problems" class="problems" data-testid="problems"></ul>
+      </section>
+      <section>
+        <h2>Ask Copilot</h2>
+        <form id="ask" class="ask">
+          <textarea id="question" rows="3" placeholder="Ask about the workflow or the selected step…" data-testid="question"></textarea>
+          <button type="submit" data-testid="ask">Ask Copilot</button>
+        </form>
+      </section>
+    </aside>
+  </main>
+  <dialog id="dialog" data-testid="dialog">
+    <form method="dialog" id="dialog-form">
+      <h3 id="dialog-title"></h3>
+      <div id="dialog-fields"></div>
+      <menu>
+        <button value="cancel" formnovalidate>Cancel</button>
+        <button value="ok" id="dialog-ok" data-testid="dialog-ok">OK</button>
+      </menu>
+    </form>
+  </dialog>
+  <script type="module" src="/app.mjs"></script>
+</body>
+</html>

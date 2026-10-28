@@ -1,0 +1,23 @@
+{
+  "name": "github-copilot-arazzo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Development tooling only: the plugin itself has no runtime dependency (yaml is vendored).",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "test": "node --test \"tests/acceptance/*.test.mjs\" \"tests/integration/*.test.mjs\" \"tests/architecture/*.test.mjs\"",
+    "test:acceptance": "node --test \"tests/acceptance/*.test.mjs\"",
+    "test:integration": "node --test \"tests/integration/*.test.mjs\"",
+    "test:architecture": "node --test \"tests/architecture/*.test.mjs\"",
+    "test:e2e": "playwright test",
+    "lint": "node --check src/composition.mjs && node --check src/presentation/ui/app.mjs && node --check com.github.copilot/extensions/arazzo-canvas/extension.mjs",
+    "mutation:core": "stryker run stryker.core.config.json",
+    "mutation:boundary": "stryker run stryker.boundary.config.json"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "@stryker-mutator/core": "9.6.1",
+    "@stryker-mutator/tap-runner": "9.6.1"
+  }
+}

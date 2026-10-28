@@ -1,0 +1,429 @@
+{
+  "canvas": {
+    "id": "arazzo",
+    "displayName": "Arazzo",
+    "description": "Author an Arazzo workflow visually: drop the operations of your OpenAPI descriptions as steps, wire data between them, see its problems and ask Copilot.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Arazzo document to open, relative to the workspace (created when missing; default: the first *.arazzo.yaml found)."
+        },
+        "workflowId": {
+          "type": "string",
+          "description": "Workflow to show, or to create in a new document."
+        },
+        "sources": {
+          "type": "array",
+          "description": "OpenAPI descriptions a new document describes.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "url"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "actions": [
+    {
+      "name": "get_workflow",
+      "description": "The open Arazzo document, the workflow shown, its steps, its problems and the operations its APIs offer.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "select_workflow",
+      "description": "Show another workflow of the document.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workflowId": {
+            "type": "string",
+            "description": "Workflow to edit (default: the one shown)."
+          }
+        },
+        "required": [
+          "workflowId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "add_workflow",
+      "description": "Add an empty workflow to the document and show it.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workflowId": {
+            "type": "string",
+            "description": "Workflow to edit (default: the one shown)."
+          },
+          "summary": {
+            "type": "string",
+            "description": "One line telling what the workflow does."
+          }
+        },
+        "required": [
+          "workflowId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "add_source",
+      "description": "Describe an API the steps call: an OpenAPI file next to the document, or an http(s) URL.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name of the API description."
+          },
+          "url": {
+            "type": "string",
+            "description": "Path relative to the document, or URL."
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "openapi",
+              "arazzo"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "url"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "add_step",
+      "description": "Add a step calling an operation: `operation` as listed by get_workflow (\"source.operationId\"), or a raw `operationId`. Lands last, or before the step `before`.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workflowId": {
+            "type": "string",
+            "description": "Workflow to edit (default: the one shown)."
+          },
+          "operation": {
+            "type": "string",
+            "description": "Operation of the palette, \"source.operationId\"."
+          },
+          "operationId": {
+            "type": "string",
+            "description": "Raw Arazzo operationId."
+          },
+          "stepId": {
+            "type": "string",
+            "description": "Step id (default: the operation name)."
+          },
+          "before": {
+            "type": "string",
+            "description": "Step to insert it before."
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "move_step",
+      "description": "Move a step to a position of the workflow, from 0.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workflowId": {
+            "type": "string",
+            "description": "Workflow to edit (default: the one shown)."
+          },
+          "stepId": {
+            "type": "string",
+            "description": "Step to move."
+          },
+          "to": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "stepId",
+          "to"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "remove_step",
+      "description": "Remove a step from the workflow.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workflowId": {
+            "type": "string",
+            "description": "Workflow to edit (default: the one shown)."
+          },
+          "stepId": {
+            "type": "string",
+            "description": "Step to remove."
+          }
+        },
+        "required": [
+          "stepId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "add_input",
+      "description": "Declare an input of the workflow.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workflowId": {
+            "type": "string",
+            "description": "Workflow to edit (default: the one shown)."
+          },
+          "name": {
+            "type": "string",
+            "description": "Input name."
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "string",
+              "integer",
+              "number",
+              "boolean",
+              "object",
+              "array"
+            ]
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "set_step_output",
+      "description": "Expose a value of a step response as an output of the step, e.g. $response.body#/id.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workflowId": {
+            "type": "string",
+            "description": "Workflow to edit (default: the one shown)."
+          },
+          "stepId": {
+            "type": "string",
+            "description": "Step."
+          },
+          "name": {
+            "type": "string",
+            "description": "Output name."
+          },
+          "expression": {
+            "type": "string",
+            "description": "Runtime expression."
+          }
+        },
+        "required": [
+          "stepId",
+          "name",
+          "expression"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "link_data",
+      "description": "Pass a workflow input or the output of an earlier step to a parameter or body property of a step.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workflowId": {
+            "type": "string",
+            "description": "Workflow to edit (default: the one shown)."
+          },
+          "from": {
+            "type": "object",
+            "description": "Where the value comes from: { \"input\": name } or { \"stepId\": id, \"output\": name }.",
+            "properties": {
+              "input": {
+                "type": "string"
+              },
+              "stepId": {
+                "type": "string"
+              },
+              "output": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
+          "to": {
+            "type": "object",
+            "description": "Where the value goes: the parameter `name` of the step `stepId`, `in` path, query, header, cookie or body.",
+            "properties": {
+              "stepId": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "in": {
+                "type": "string",
+                "enum": [
+                  "path",
+                  "query",
+                  "header",
+                  "cookie",
+                  "body"
+                ]
+              }
+            },
+            "required": [
+              "stepId",
+              "name",
+              "in"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "add_workflow_output",
+      "description": "Expose the output of a step as an output of the workflow.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workflowId": {
+            "type": "string",
+            "description": "Workflow to edit (default: the one shown)."
+          },
+          "name": {
+            "type": "string",
+            "description": "Workflow output name."
+          },
+          "stepId": {
+            "type": "string",
+            "description": "Step."
+          },
+          "output": {
+            "type": "string",
+            "description": "Output of the step."
+          }
+        },
+        "required": [
+          "name",
+          "stepId",
+          "output"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "add_success_criterion",
+      "description": "Add a condition telling the step succeeded, e.g. $statusCode == 200.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workflowId": {
+            "type": "string",
+            "description": "Workflow to edit (default: the one shown)."
+          },
+          "stepId": {
+            "type": "string",
+            "description": "Step."
+          },
+          "condition": {
+            "type": "string",
+            "description": "Condition."
+          }
+        },
+        "required": [
+          "stepId",
+          "condition"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "add_action",
+      "description": "On success or failure of a step: end the workflow, goto another step (`target`) or retry (failure only, `retryLimit`, `retryAfter` seconds).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workflowId": {
+            "type": "string",
+            "description": "Workflow to edit (default: the one shown)."
+          },
+          "stepId": {
+            "type": "string",
+            "description": "Step."
+          },
+          "on": {
+            "type": "string",
+            "enum": [
+              "success",
+              "failure"
+            ]
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "end",
+              "goto",
+              "retry"
+            ]
+          },
+          "target": {
+            "type": "string",
+            "description": "Step to go to."
+          },
+          "retryLimit": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "retryAfter": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "stepId",
+          "on",
+          "type"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ]
+}

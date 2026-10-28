@@ -1,0 +1,12 @@
+{
+  "name": "github-copilot-arazzo",
+  "owner": { "name": "SebastienDegodez" },
+  "metadata": { "description": "Author Arazzo workflows visually in GitHub Copilot." },
+  "plugins": [
+    {
+      "name": "arazzo",
+      "source": "./",
+      "description": "A visual Arazzo canvas: drop OpenAPI operations as steps, wire data between them, see what is invalid and ask Copilot."
+    }
+  ]
+}

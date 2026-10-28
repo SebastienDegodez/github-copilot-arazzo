@@ -1,0 +1,21 @@
+{
+  "trackingLayout": "namespaced",
+  "components": [
+    {
+      "name": "arazzo-canvas",
+      "root": ".",
+      "stack": "javascript",
+      "paths": {
+        "src": ["src", "com.github.copilot/extensions/arazzo-canvas"],
+        "tests": ["tests", "features"]
+      },
+      "commands": {
+        "test": "npm test",
+        "architecture": "npm run test:architecture",
+        "lint": "npm run lint",
+        "e2e": "npm run test:e2e",
+        "mutation": "node \"<skill>/scripts/run-gates.mjs\" --root . --package . --core stryker.core.config.json --boundary stryker.boundary.config.json --evidence .copilot-tracking/skraft-gates/mutation --since {baseSha}"
+      }
+    }
+  ]
+}

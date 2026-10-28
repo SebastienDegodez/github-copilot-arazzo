@@ -1,0 +1,27 @@
+openapi: 3.0.3
+info:
+  title: Petstore
+  version: 1.0.0
+paths:
+  /pets:
+    get:
+      operationId: findPets
+      summary: Find pets by status
+      parameters:
+        - name: status
+          in: query
+  /pets/{petId}:
+    parameters:
+      - name: petId
+        in: path
+        required: true
+    get:
+      operationId: getPet
+      summary: Get a pet
+  /orders:
+    post:
+      operationId: placeOrder
+      summary: Order a pet
+      requestBody:
+        content:
+          application/json: {}

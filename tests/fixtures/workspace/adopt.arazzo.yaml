@@ -1,0 +1,24 @@
+arazzo: 1.0.1
+info:
+  title: Adopt a pet
+  version: 1.0.0
+sourceDescriptions:
+  - name: petstore
+    url: apis/petstore.yaml
+    type: openapi
+workflows:
+  - workflowId: adopt-pet
+    inputs:
+      type: object
+      properties:
+        status:
+          type: string
+    steps:
+      - stepId: findPets
+        operationId: findPets
+        outputs:
+          petId: $response.body#/0/id
+      - stepId: getPet
+        operationId: getPet
+      - stepId: placeOrder
+        operationId: placeOrder
