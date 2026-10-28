@@ -132,7 +132,10 @@ npm run mutation:core       # Stryker, breaks under 100
 npm run mutation:boundary   # Stryker, breaks under 80
 ```
 
-Every gate runs in [CI](.github/workflows/ci.yml) on each pull request.
+Every gate runs in [CI](.github/workflows/ci.yml) on each pull request. Mutation testing only
+mutates the source files a pull request changes, and is skipped when it changes none (tests or docs
+only); a change of the Stryker configs or package manifests mutates the whole scope, and a
+[weekly run](.github/workflows/mutation-full.yml) mutates everything.
 
 ## Demo video
 

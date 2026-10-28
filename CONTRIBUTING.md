@@ -18,6 +18,12 @@ Thanks for helping improve the Arazzo canvas.
    npm run mutation:core && npm run mutation:boundary
    ```
 
+   To mutate only what you changed, as CI does:
+
+   ```sh
+   npx stryker run stryker.core.config.json --mutate "$(node scripts/mutation-scope.mjs stryker.core.config.json origin/main | node -pe 'JSON.parse(require("fs").readFileSync(0)).files.join(",")')"
+   ```
+
 ## Rules
 
 - `src/arazzo-domain` imports only itself; `src/arazzo-application` only the domain;
