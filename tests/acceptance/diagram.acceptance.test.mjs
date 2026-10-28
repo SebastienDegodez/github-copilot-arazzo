@@ -22,10 +22,10 @@ describe('Draw the workflow as a flow chart', () => {
     const { studio } = await studioWith({
       inputs: ['status'],
       steps: [
-        { stepId: 'findPets', operationId: 'findPets', parameters: [{ name: 'status', in: 'query', value: '$inputs.status' }], outputs: { petId: '$response.body#/0/id' },
+        { stepId: 'findPets', description: 'Find the pets', operationId: 'findPets', parameters: [{ name: 'status', in: 'query', value: '$inputs.status' }], outputs: { petId: '$response.body#/0/id' },
           onSuccess: [{ name: 'done', type: 'end' }], onFailure: [{ name: 'again', type: 'goto', stepId: 'getPet' }] },
-        { stepId: 'getPet', operationId: 'getPet', parameters: [{ name: 'petId', in: 'path', value: '$steps.findPets.outputs.petId' }],
-          onFailure: [{ name: 'retry', type: 'retry', retryLimit: 2 }] },
+        { stepId: 'getPet', description: 'Read the pet', operationId: 'getPet', parameters: [{ name: 'petId', in: 'path', value: '$steps.findPets.outputs.petId' }],
+          onFailure: [{ name: 'retry', type: 'retry', retryLimit: 2, retryAfter: 0 }] },
       ],
     })
     const { diagram } = studio.view()
@@ -97,5 +97,14 @@ describe('Draw the workflow as a flow chart', () => {
     const { studio } = await studioWith({ steps: [{ stepId: 'placeOrder', operationId: 'placeOrder', onFailure: [{ name: 'again', type: 'retry', retryLimit: 2 }, { name: 'stop', type: 'end' }] }] })
     const edges = studio.view().diagram.edges.filter((edge) => edge.kind !== 'sequence')
     assert.deepEqual(edges.map((edge) => [edge.kind, edge.path]), [['end', 'M 304 244 L 328 244'], ['retry', 'M 304 224 C 336 224 336 198 304 198']])
+  })
+
+  test('A value read from a step that does not run before, or not from its outputs, draws no data edge', async () => {
+    const { studio } = await studioWith({ steps: [
+      { stepId: 'findPets', operationId: 'findPets', parameters: [{ name: 'a', in: 'query', value: '$steps.getPet.outputs.id' }, { name: 'b', in: 'query', value: '$steps.findPets.outputs.id' }] },
+      { stepId: 'getPet', operationId: 'getPet', outputs: { id: '$response.body#/id' }, parameters: [{ name: 'c', in: 'query', value: '$steps.findPets.statusCode' }],
+        onSuccess: [{ name: 'stop', type: 'end', stepId: 'findPets' }] },
+    ] })
+    assert.deepEqual(studio.view().diagram.edges.map((edge) => edge.kind), ['sequence', 'sequence', 'sequence', 'end'])
   })
 })

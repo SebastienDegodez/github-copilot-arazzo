@@ -8,28 +8,36 @@ const from = {
   properties: { input: { type: 'string' }, stepId: { type: 'string' }, output: { type: 'string' } },
   additionalProperties: false,
 }
+const place = { type: 'string', enum: ['path', 'query', 'header', 'cookie', 'body'] }
+const none = { type: 'object', properties: {}, additionalProperties: false }
 const to = {
   type: 'object',
   description: 'Where the value goes: the parameter `name` of the step `stepId`, `in` path, query, header, cookie or body.',
-  properties: { stepId: { type: 'string' }, name: { type: 'string' }, in: { type: 'string', enum: ['path', 'query', 'header', 'cookie', 'body'] } },
+  properties: { stepId: { type: 'string' }, name: { type: 'string' }, in: place },
   required: ['stepId', 'name', 'in'],
   additionalProperties: false,
 }
 
 export const createActions = (studio) => [
-  { name: 'get_workflow', agent: true, description: 'The open Arazzo document, the workflow shown, its steps, its problems and the operations its APIs offer.',
-    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+  { name: 'get_workflow', agent: true,
+    description: 'The open Arazzo document: the workflow shown, its steps, its problems (rule, severity, pointer, line, message), the APIs it describes and the operations they offer, and whether it is saved (save: dirty, autosave, savedAt).',
+    inputSchema: none,
     run: () => {
-      const { document, diagram, ...view } = studio.view()
+      const { document, diagram, yaml, ...view } = studio.view()
       return { ...view, operations: view.operations.map(({ source, operationId, method, path }) => ({ operation: `${source}.${operationId}`, method, path })) }
     } },
   { name: 'select_workflow', agent: true, description: 'Show another workflow of the document.',
     inputSchema: schema({}, ['workflowId']), run: (input) => studio.selectWorkflow(input) },
   { name: 'add_workflow', agent: true, description: 'Add an empty workflow to the document and show it.',
     inputSchema: schema({ summary: string('One line telling what the workflow does.') }, ['workflowId']), run: (input) => studio.addWorkflow(input) },
-  { name: 'add_source', agent: true, description: 'Describe an API the steps call: an OpenAPI file next to the document, or an http(s) URL.',
+  { name: 'add_source', agent: true, description: 'Describe an API the steps call: an OpenAPI or Arazzo file next to the document, or an http(s) URL; refused when it cannot be read.',
     inputSchema: { type: 'object', properties: { name: string('Name of the API description.'), url: string('Path relative to the document, or URL.'), type: { type: 'string', enum: ['openapi', 'arazzo'] } }, required: ['name', 'url'], additionalProperties: false },
     run: (input) => studio.addSource(input) },
+  { name: 'remove_source', agent: true, description: 'Stop describing an API no step calls.',
+    inputSchema: { type: 'object', properties: { name: string('Name of the API description.') }, required: ['name'], additionalProperties: false },
+    run: (input) => studio.removeSource(input) },
+  { name: 'list_source_candidates', agent: true, description: 'The OpenAPI and Arazzo files of the workspace the document could describe, relative to the document.',
+    inputSchema: none, run: () => studio.listSourceCandidates() },
   { name: 'add_step', agent: true, description: 'Add a step calling an operation: `operation` as listed by get_workflow ("source.operationId"), or a raw `operationId`. Lands last, or before the step `before`.',
     inputSchema: schema({ operation: string('Operation of the palette, "source.operationId".'), operationId: string('Raw Arazzo operationId.'), stepId: string('Step id (default: the operation name).'), before: string('Step to insert it before.') }),
     run: (input) => studio.addStep(input) },
@@ -45,6 +53,12 @@ export const createActions = (studio) => [
     run: (input) => studio.setStepOutput(input) },
   { name: 'link_data', agent: true, description: 'Pass a workflow input or the output of an earlier step to a parameter or body property of a step.',
     inputSchema: schema({ from, to }, ['from', 'to']), run: (input) => studio.linkData(input) },
+  { name: 'set_step_value', agent: true, description: 'Make a step send a value: a fixed value or a runtime expression such as $inputs.status, as a parameter (`in` path, query, header, cookie) or a property of its JSON body (`in` body).',
+    inputSchema: schema({ stepId: string('Step.'), name: string('Parameter or body property.'), in: place, value: string('Fixed value or runtime expression.') }, ['stepId', 'name', 'in', 'value']),
+    run: (input) => studio.setStepValue(input) },
+  { name: 'clear_step_value', agent: true, description: 'Stop sending a parameter or a body property of a step.',
+    inputSchema: schema({ stepId: string('Step.'), name: string('Parameter or body property.'), in: place }, ['stepId', 'name', 'in']),
+    run: (input) => studio.clearStepValue(input) },
   { name: 'add_workflow_output', agent: true, description: 'Expose the output of a step as an output of the workflow.',
     inputSchema: schema({ name: string('Workflow output name.'), stepId: string('Step.'), output: string('Output of the step.') }, ['name', 'stepId', 'output']),
     run: (input) => studio.addWorkflowOutput(input) },
@@ -53,6 +67,19 @@ export const createActions = (studio) => [
   { name: 'add_action', agent: true, description: 'On success or failure of a step: end the workflow, goto another step (`target`) or retry (failure only, `retryLimit`, `retryAfter` seconds).',
     inputSchema: schema({ stepId: string('Step.'), on: { type: 'string', enum: ['success', 'failure'] }, type: { type: 'string', enum: ['end', 'goto', 'retry'] }, target: string('Step to go to.'), retryLimit: { type: 'integer', minimum: 1 }, retryAfter: { type: 'number', minimum: 0 } }, ['stepId', 'on', 'type']),
     run: (input) => studio.addAction(input) },
+  { name: 'save', agent: true, description: 'Save the document to its file now.', inputSchema: none, run: () => studio.save() },
+  { name: 'undo', agent: true, description: 'Undo the last edit of the document.', inputSchema: none, run: () => studio.undo() },
+  { name: 'redo', agent: true, description: 'Redo the edit last undone.', inputSchema: none, run: () => studio.redo() },
+  { name: 'set_autosave', agent: true, description: 'Save every edit at once (on), or only on save (off); turning it on saves what waits. The developer\'s choice is remembered.',
+    inputSchema: { type: 'object', properties: { on: { type: 'boolean' } }, required: ['on'], additionalProperties: false },
+    run: (input) => studio.setAutosave(input) },
+  { name: 'get_yaml', agent: true, description: 'The YAML text of the document as it will be saved, and why it does not parse when it does not.',
+    inputSchema: none, run: () => studio.getYaml() },
+  { name: 'set_yaml', agent: true, description: 'Replace the YAML text of the document; the diagram shows it once it parses. Prefer the other actions for an edit they make.',
+    inputSchema: { type: 'object', properties: { text: string('The whole YAML text.') }, required: ['text'], additionalProperties: false },
+    run: (input) => studio.setYaml(input) },
+  { name: 'resolve_conflict', agent: false, description: 'After the file changed on disk under unsaved edits, keep "mine" or take the "file".',
+    run: (input) => studio.resolveConflict(input) },
   { name: 'ask', agent: false, description: 'Hand a question about the workflow or one of its steps to Copilot.',
     run: (input) => studio.ask(input) },
 ]

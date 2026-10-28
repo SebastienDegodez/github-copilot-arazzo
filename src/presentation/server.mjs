@@ -104,6 +104,8 @@ export const startServer = async ({ studio, actions, isRefusal, onError = () => 
       unsubscribe()
       for (const res of clients) res.end()
       server.close(() => resolve())
+      // a panel may still be sending, or its event stream may reconnect on a kept-alive socket
+      server.closeAllConnections()
     }),
   }
 }

@@ -1,0 +1,16 @@
+name: Feature request
+description: A new capability for the canvas
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: The need
+      description: What you are trying to do with your Arazzo workflow, and why it is hard today.
+    validations: { required: true }
+  - type: textarea
+    id: scenario
+    attributes:
+      label: Scenario
+      description: If you can, the behaviour as Given / When / Then.
+      render: gherkin

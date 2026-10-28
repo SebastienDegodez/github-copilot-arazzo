@@ -1,5 +1,6 @@
 // The panel server on a real loopback port, in front of the real studio and its actions.
 import assert from 'node:assert/strict'
+import { request } from 'node:http'
 import { after, before, describe, test } from 'node:test'
 import { createStudio } from '../../src/arazzo-application/studio.mjs'
 import { createActions } from '../../src/presentation/actions.mjs'
@@ -128,5 +129,16 @@ describe('The panel server before any document is open', () => {
     assert.deepEqual(await events.next(), { error: 'no Arazzo document is open on the canvas' })
     await server.close()
     await assert.rejects(fetch(server.url))
+  })
+
+  test('closes even while a panel is still sending a request', async () => {
+    const { studio } = await studioWith()
+    const server = await startServer({ studio, actions: [], isRefusal })
+    const unfinished = request(new URL('/api/add_input', server.url), { method: 'POST', headers: { 'X-Canvas-Token': await tokenOf(server.url), 'Content-Length': 100 } })
+    unfinished.on('error', () => {})
+    unfinished.write('{"name"')
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    const closed = await Promise.race([server.close().then(() => 'closed'), new Promise((resolve) => setTimeout(() => resolve('still open'), 2000))])
+    assert.equal(closed, 'closed')
   })
 })

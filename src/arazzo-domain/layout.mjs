@@ -5,7 +5,7 @@
 // a goto curves on the right to the step it goes to, an end leaves the step in a short exit.
 // Adapted from workflow-diagram.layout.ts of Microcks (Copyright The Microcks Authors, Apache-2.0).
 import { referencesIn } from './expressions.mjs'
-import { listOf } from './lists.mjs'
+import { mapOf, objectsOf } from './lists.mjs'
 
 export const MARGIN = 24
 export const NODE_WIDTH = 280
@@ -24,8 +24,8 @@ const LOOP = 26
 const flowsOf = (steps) => {
   const indexOf = new Map(steps.map((step, index) => [step.stepId, index]))
   return steps.flatMap((step, index) => [
-    ...listOf(step.parameters).map((parameter) => [`${parameter.in} ${parameter.name}`, parameter.value]),
-    ...Object.entries(step.requestBody?.payload ?? {}).map(([name, value]) => [`body ${name}`, value]),
+    ...objectsOf(step.parameters).map((parameter) => [`${parameter.in} ${parameter.name}`, parameter.value]),
+    ...Object.entries(mapOf(mapOf(step.requestBody).payload)).map(([name, value]) => [`body ${name}`, value]),
   ].flatMap(([place, value]) => {
     const { inputs, outputs } = referencesIn(value)
     return [
@@ -37,8 +37,8 @@ const flowsOf = (steps) => {
 }
 
 const actionsOf = (step) => [
-  ...listOf(step.onSuccess).map((action) => ({ ...action, on: 'success' })),
-  ...listOf(step.onFailure).map((action) => ({ ...action, on: 'failure' })),
+  ...objectsOf(step.onSuccess).map((action) => ({ ...action, on: 'success' })),
+  ...objectsOf(step.onFailure).map((action) => ({ ...action, on: 'failure' })),
 ]
 
 const gotosOf = (steps) => {
@@ -54,11 +54,11 @@ const curve = (x, startY, laneX, endY) => `M ${x} ${startY} C ${laneX} ${startY}
 
 /**
  * @param {object} workflow an Arazzo workflow
- * @param {(step: object) => object} describe what a step node carries besides its step id and
- *   position, such as its operation and its problems
+ * @param {(step: object, index: number) => object} describe what a step node carries besides its step
+ *   id and position, such as its operation and its problems
  */
 export const layoutWorkflow = (workflow, describe) => {
-  const steps = listOf(workflow.steps)
+  const steps = objectsOf(workflow.steps)
   const flows = flowsOf(steps)
   const gotos = gotosOf(steps)
   const left = flows.filter((flow) => flow.side === 'left')
@@ -73,7 +73,7 @@ export const layoutWorkflow = (workflow, describe) => {
   const nodes = [
     { id: 'inputs', kind: 'inputs', x, y: MARGIN, width: NODE_WIDTH, height: IO_HEIGHT },
     ...steps.map((step, index) => ({
-      id: `step:${index}`, kind: 'step', stepId: step.stepId, index, x, y: stepY(index), width: NODE_WIDTH, height: STEP_HEIGHT, ...describe(step),
+      id: `step:${index}`, kind: 'step', stepId: step.stepId, index, x, y: stepY(index), width: NODE_WIDTH, height: STEP_HEIGHT, ...describe(step, index),
     })),
     { id: 'outputs', kind: 'outputs', x, y: stepY(steps.length), width: NODE_WIDTH, height: IO_HEIGHT },
   ]
@@ -116,7 +116,7 @@ export const layoutWorkflow = (workflow, describe) => {
         kind: 'end', from: node.id, to: `end:${index}:${k}`, path: `M ${nodeRight} ${bottom - 20 - k * 20} L ${nodeRight + 24} ${bottom - 20 - k * 20}`,
         label: { lines: [`end on ${on}`], x: nodeRight + 30, y: bottom - 20 - k * 20, align: 'start' },
       }))
-    const retry = listOf(step.onFailure).find((action) => action.type === 'retry')
+    const retry = objectsOf(step.onFailure).find((action) => action.type === 'retry')
     if (!retry) return ends
     // below the values coming in at the top of the step, above its ends
     const startY = bottom - 20 - ends.length * 20

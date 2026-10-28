@@ -1,0 +1,26 @@
+name: Bug report
+description: Something on the canvas does not behave as expected
+labels: [bug]
+body:
+  - type: textarea
+    id: steps
+    attributes:
+      label: What you did
+      description: The actions on the canvas, and the Arazzo document if you can share it.
+    validations: { required: true }
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations: { required: true }
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened
+      description: Screenshots of the canvas are very welcome.
+    validations: { required: true }
+  - type: input
+    id: version
+    attributes:
+      label: Plugin version
+      placeholder: v1.2.0

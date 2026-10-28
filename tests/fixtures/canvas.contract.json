@@ -2,7 +2,7 @@
   "canvas": {
     "id": "arazzo",
     "displayName": "Arazzo",
-    "description": "Author an Arazzo workflow visually: drop the operations of your OpenAPI descriptions as steps, wire data between them, see its problems and ask Copilot.",
+    "description": "Author an Arazzo workflow visually: drop the operations of your OpenAPI descriptions as steps, wire data between them, see its problems against the spectral:arazzo rules and its YAML, save it and ask Copilot.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -41,7 +41,7 @@
   "actions": [
     {
       "name": "get_workflow",
-      "description": "The open Arazzo document, the workflow shown, its steps, its problems and the operations its APIs offer.",
+      "description": "The open Arazzo document: the workflow shown, its steps, its problems (rule, severity, pointer, line, message), the APIs it describes and the operations they offer, and whether it is saved (save: dirty, autosave, savedAt).",
       "inputSchema": {
         "type": "object",
         "properties": {},
@@ -88,7 +88,7 @@
     },
     {
       "name": "add_source",
-      "description": "Describe an API the steps call: an OpenAPI file next to the document, or an http(s) URL.",
+      "description": "Describe an API the steps call: an OpenAPI or Arazzo file next to the document, or an http(s) URL; refused when it cannot be read.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -112,6 +112,32 @@
           "name",
           "url"
         ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "remove_source",
+      "description": "Stop describing an API no step calls.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name of the API description."
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "list_source_candidates",
+      "description": "The OpenAPI and Arazzo files of the workspace the document could describe, relative to the document.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
         "additionalProperties": false
       }
     },
@@ -319,6 +345,85 @@
       }
     },
     {
+      "name": "set_step_value",
+      "description": "Make a step send a value: a fixed value or a runtime expression such as $inputs.status, as a parameter (`in` path, query, header, cookie) or a property of its JSON body (`in` body).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workflowId": {
+            "type": "string",
+            "description": "Workflow to edit (default: the one shown)."
+          },
+          "stepId": {
+            "type": "string",
+            "description": "Step."
+          },
+          "name": {
+            "type": "string",
+            "description": "Parameter or body property."
+          },
+          "in": {
+            "type": "string",
+            "enum": [
+              "path",
+              "query",
+              "header",
+              "cookie",
+              "body"
+            ]
+          },
+          "value": {
+            "type": "string",
+            "description": "Fixed value or runtime expression."
+          }
+        },
+        "required": [
+          "stepId",
+          "name",
+          "in",
+          "value"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "clear_step_value",
+      "description": "Stop sending a parameter or a body property of a step.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workflowId": {
+            "type": "string",
+            "description": "Workflow to edit (default: the one shown)."
+          },
+          "stepId": {
+            "type": "string",
+            "description": "Step."
+          },
+          "name": {
+            "type": "string",
+            "description": "Parameter or body property."
+          },
+          "in": {
+            "type": "string",
+            "enum": [
+              "path",
+              "query",
+              "header",
+              "cookie",
+              "body"
+            ]
+          }
+        },
+        "required": [
+          "stepId",
+          "name",
+          "in"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
       "name": "add_workflow_output",
       "description": "Expose the output of a step as an output of the workflow.",
       "inputSchema": {
@@ -421,6 +526,75 @@
           "stepId",
           "on",
           "type"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "save",
+      "description": "Save the document to its file now.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "undo",
+      "description": "Undo the last edit of the document.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "redo",
+      "description": "Redo the edit last undone.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "set_autosave",
+      "description": "Save every edit at once (on), or only on save (off); turning it on saves what waits. The developer's choice is remembered.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "on": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "on"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_yaml",
+      "description": "The YAML text of the document as it will be saved, and why it does not parse when it does not.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "set_yaml",
+      "description": "Replace the YAML text of the document; the diagram shows it once it parses. Prefer the other actions for an edit they make.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "The whole YAML text."
+          }
+        },
+        "required": [
+          "text"
         ],
         "additionalProperties": false
       }
