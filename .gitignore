@@ -7,3 +7,15 @@ playwright-report/
 .DS_Store
 *.tmp
 coverage/
+
+# Generated video export (published on YouTube)
+docs/media/*.mp4
+
+# VS Code
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+*.code-workspace
+.history/
