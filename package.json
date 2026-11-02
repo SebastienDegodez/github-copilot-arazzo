@@ -24,7 +24,7 @@
     "video:audio": "node video/audio.mjs"
   },
   "devDependencies": {
-    "@babel/standalone": "^7.29.11",
+    "@babel/standalone": "^8.0.10",
     "@fontsource/fira-code": "^5.3.0",
     "@fontsource/lato": "^5.3.0",
     "@playwright/test": "^1.49.0",
